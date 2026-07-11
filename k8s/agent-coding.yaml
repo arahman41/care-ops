@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-coding
+  namespace: care-ops
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: agent-coding}}
+  template:
+    metadata: {labels: {app: agent-coding}}
+    spec:
+      containers:
+        - name: agent-coding
+          image: care-ops-agent_coding:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8000}]
+          envFrom:
+            - secretRef: {name: care-ops-secrets}
+          env:
+            - {name: POSTGRES_HOST, value: db}
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-coding
+  namespace: care-ops
+spec:
+  selector: {app: agent-coding}
+  ports: [{port: 8000, targetPort: 8000}]

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Env and secrets
+.env
+*.local
+
+# Data (never commit clinical data, even de-identified)
+data/*
+!data/.gitkeep
+
+# Models and artifacts
+*.pt
+*.bin
+*.onnx
+whisper_cache/
+
+# Node
+node_modules/
+dashboard/dist/
+
+# OS
+.DS_Store
+
+# No notebooks in this repo (hard project rule)
+*.ipynb

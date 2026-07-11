@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: care_ops
+      POSTGRES_USER: care_ops
+      POSTGRES_PASSWORD: change_me
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U care_ops"]
+      interval: 5s
+      retries: 5
+
+  intake:
+    build: {context: ., dockerfile: services/intake/Dockerfile}
+    env_file: .env
+    environment: {POSTGRES_HOST: db}
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+
+  orchestrator:
+    build: {context: ., dockerfile: services/orchestrator/Dockerfile}
+    env_file: .env
+    environment: {POSTGRES_HOST: db}
+    ports: ["8001:8000"]
+    depends_on: [intake, agent-prior-auth, agent-care-gap, agent-coding]
+
+  agent-prior-auth:
+    build: {context: ., dockerfile: services/agent_prior_auth/Dockerfile}
+    env_file: .env
+    environment: {POSTGRES_HOST: db}
+    depends_on:
+      db: {condition: service_healthy}
+
+  agent-care-gap:
+    build: {context: ., dockerfile: services/agent_care_gap/Dockerfile}
+    env_file: .env
+    environment: {POSTGRES_HOST: db}
+    depends_on:
+      db: {condition: service_healthy}
+
+  agent-coding:
+    build: {context: ., dockerfile: services/agent_coding/Dockerfile}
+    env_file: .env
+    environment: {POSTGRES_HOST: db}
+    depends_on:
+      db: {condition: service_healthy}
