@@ -11,8 +11,9 @@ Routing reflects the cost and accuracy analysis for this project:
 Stable content (SOAP schema, system prompts, coding references) should be
 sent with prompt caching so only the transcript varies per request.
 
-Note: confirm the exact effort keyword against the current Anthropic SDK
-before production. It is isolated here so there is one place to change it.
+Effort is passed via output_config={"effort": ...}, confirmed against
+anthropic-sdk-python 0.116.0. This differs from the extra_body approach in
+earlier drafts; the SDK now has a first-class output_config parameter.
 """
 from __future__ import annotations
 
@@ -48,10 +49,9 @@ def call(component: str, system: str, user: str,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
-    # Effort is applied only where a level is configured. Verify the exact
-    # parameter name against the current SDK version in one place.
+    # Effort is applied only where a level is configured.
     if effort:
-        kwargs["extra_body"] = {"effort": effort}
+        kwargs["output_config"] = {"effort": effort}
     resp = _client.messages.create(**kwargs)
     return "".join(block.text for block in resp.content
                    if getattr(block, "type", None) == "text")

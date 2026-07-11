@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from shared.config import settings
 from shared.db import insert_encounter, insert_note
-from services.intake.structure import structure_note
+from services.intake.structure import structure_note, NoteStructuringError
 
 app = FastAPI(title="Care Ops Copilot - Intake")
 
@@ -38,7 +38,10 @@ def intake(req: IntakeRequest):
     if not transcript.strip():
         raise HTTPException(422, "Empty transcript")
 
-    soap, model, effort = structure_note(transcript)
+    try:
+        soap, model, effort = structure_note(transcript)
+    except NoteStructuringError as exc:
+        raise HTTPException(502, str(exc)) from exc
     encounter_id = insert_encounter(req.external_ref, source)
     note_id = insert_note(encounter_id, soap.model_dump(), model, effort)
     return {"encounter_id": encounter_id, "note_id": note_id,
