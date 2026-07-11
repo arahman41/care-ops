@@ -6,7 +6,9 @@ services:
       POSTGRES_USER: care_ops
       POSTGRES_PASSWORD: change_me
     ports:
-      - "5432:5432"
+      # Host port 5433: this machine already has a native postgres.exe on
+      # 5432, which silently shadows Docker's published port on Windows.
+      - "5433:5432"
     volumes:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     healthcheck:
