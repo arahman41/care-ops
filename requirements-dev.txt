@@ -1,5 +1,6 @@
 -r requirements.txt
 -r governance/requirements.txt
+faster-whisper==1.1.0
 pytest==8.3.4
 pytest-asyncio==0.25.0
 pytest-cov==6.0.0

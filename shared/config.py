@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     postgres_user: str = "care_ops"
     postgres_password: str = "change_me"
 
+    whisper_model_size: str = "base"
+
     intake_url: str = "http://intake:8000"
     prior_auth_url: str = "http://agent-prior-auth:8000"
     care_gap_url: str = "http://agent-care-gap:8000"

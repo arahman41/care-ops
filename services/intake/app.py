@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from shared.config import settings
 from shared.db import insert_encounter, insert_note
 from services.intake.structure import structure_note
 
@@ -28,7 +29,7 @@ def intake(req: IntakeRequest):
 
     if req.audio_path:
         from services.intake.transcribe import transcribe
-        transcript = transcribe(req.audio_path)
+        transcript = transcribe(req.audio_path, model_size=settings.whisper_model_size)
         source = "audio"
     else:
         transcript = req.transcript
