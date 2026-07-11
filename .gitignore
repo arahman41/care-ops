@@ -30,5 +30,8 @@ dashboard/dist/
 # OS
 .DS_Store
 
+# Local Claude Code agent templates (not project-specific, not wired up)
+.claude/
+
 # No notebooks in this repo (hard project rule)
 *.ipynb
