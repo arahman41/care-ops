@@ -25,7 +25,7 @@ down:
 	docker compose down -v
 
 db-init:
-	psql "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)" -f db/schema.sql
+	docker compose exec -T db psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f - < db/schema.sql
 
 load-test:
 	locust -f scripts/load_test.py --headless -u 20 -r 5 -t 1m --host http://localhost:8000

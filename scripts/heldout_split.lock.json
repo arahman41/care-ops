@@ -1,0 +1,1349 @@
+{
+  "aci_official_to_split": {
+    "clef_taskC_test3": "heldout",
+    "clinicalnlp_taskB_test1": "heldout",
+    "clinicalnlp_taskC_test2": "heldout",
+    "train": "train",
+    "valid": "dev"
+  },
+  "counts": {
+    "aci-bench": {
+      "dev": 20,
+      "heldout": 120,
+      "train": 67
+    },
+    "primock57": {
+      "dev": 15,
+      "heldout": 7,
+      "train": 35
+    }
+  },
+  "digest": "c6f2d5bfda102a191d5b9592bf5d0ebe1d5e5eb959db1937859afa447a7a7786",
+  "records": [
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N001",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N002",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N003",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N004",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N005",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N006",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N007",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N008",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N009",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N010",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N011",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N012",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N013",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N014",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N015",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N016",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N017",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N018",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N019",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N020",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N021",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N022",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N023",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N024",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N025",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N026",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N027",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N028",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N029",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N030",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N031",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N032",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N033",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N034",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N035",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N036",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N037",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N038",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N039",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N040",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N041",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N042",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N043",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N044",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N045",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N046",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N047",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N048",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N049",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N050",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N051",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N052",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N053",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N054",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N055",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N056",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N057",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N058",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N059",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N060",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N061",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N062",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N063",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N064",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N065",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N066",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N067",
+      "split": "train"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N068",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N069",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N070",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N071",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N072",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N073",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N074",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N075",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N076",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N077",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N078",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N079",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N080",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N081",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N082",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N083",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N084",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N085",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N086",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N087",
+      "split": "dev"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N088",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N089",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N090",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N091",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N092",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N093",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N094",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N095",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N096",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N097",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N098",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N099",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N100",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N101",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N102",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N103",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N104",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N105",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N106",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N107",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N108",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N109",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N110",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N111",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N112",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N113",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N114",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N115",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N116",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N117",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N118",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N119",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N120",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N121",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N122",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N123",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N124",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N125",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N126",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N127",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N128",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N129",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N130",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N131",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N132",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N133",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N134",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N135",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N136",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N137",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N138",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N139",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N140",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N141",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N142",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N143",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N144",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N145",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N146",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N147",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N148",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N149",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N150",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N151",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N152",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N153",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N154",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N155",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N156",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N157",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N158",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N159",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N160",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N161",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N162",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N163",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N164",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N165",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N166",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N167",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N168",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N169",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N170",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N171",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N172",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N173",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N174",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N175",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N176",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N177",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N178",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N179",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N180",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N181",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N182",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N183",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N184",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N185",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N186",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N187",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N188",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N189",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N190",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N191",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N192",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N193",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N194",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N195",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N196",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N197",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N198",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N199",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N200",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N201",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N202",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N203",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N204",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N205",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N206",
+      "split": "heldout"
+    },
+    {
+      "dataset": "aci-bench",
+      "encounter_id": "D2N207",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation01",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation02",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation03",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation04",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation05",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation06",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation07",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation08",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation09",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation10",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation11",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation12",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation13",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation14",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day1_consultation15",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation01",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation02",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation03",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation04",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation05",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation06",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation07",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation08",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation09",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day2_consultation10",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation01",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation02",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation03",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation04",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation05",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation06",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation07",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation08",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation09",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day3_consultation10",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation01",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation02",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation03",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation04",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation05",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation06",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation07",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation08",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation09",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day4_consultation10",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation01",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation02",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation03",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation04",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation05",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation06",
+      "split": "heldout"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation07",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation08",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation09",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation10",
+      "split": "train"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation11",
+      "split": "dev"
+    },
+    {
+      "dataset": "primock57",
+      "encounter_id": "day5_consultation12",
+      "split": "dev"
+    }
+  ],
+  "salt": "care-ops-copilot/heldout/v1",
+  "thresholds": {
+    "dev_max": 40,
+    "heldout_max": 20
+  }
+}
