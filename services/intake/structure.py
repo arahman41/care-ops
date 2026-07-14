@@ -1,14 +1,15 @@
 """Turn a raw transcript into a structured SOAP note via Claude."""
 from __future__ import annotations
 
-import json
-
 from pydantic import ValidationError
 
-from shared.llm import call, ROUTING
+from shared.llm import MalformedJSONError, call, extract_json, ROUTING
 from shared.schemas import SoapNote
 
-_SYSTEM = (
+# Public because the P1-4 eval harness hashes it into its generation cache
+# key: editing this prompt must invalidate every cached SOAP note, or the
+# harness would score old output against a new prompt.
+SYSTEM_PROMPT = (
     "You convert a doctor patient consultation transcript into a SOAP note. "
     "Return only JSON with keys subjective, objective, assessment, plan. "
     "Each value is a concise clinical paragraph grounded strictly in the "
@@ -32,25 +33,49 @@ class NoteStructuringError(ValueError):
             f"SOAP structuring failed: {reason}. Raw output: {preview!r}")
 
 
-def _strip_code_fence(raw: str) -> str:
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw[3:]
-        if raw[:4].lower() == "json":
-            raw = raw[4:]
-        raw = raw.removesuffix("```")
-    return raw.strip()
+# The longest held-out reference note is ~1350 tokens, and a generated SOAP
+# note plus its JSON scaffolding plus high-effort reasoning runs well past
+# that. The original 1200 truncated real encounters mid-string (caught by the
+# P1-4 harness on ACI-Bench D2N101, a 4019-character note). Unused output
+# tokens are never billed, so a generous ceiling is free insurance against an
+# entire class of failure.
+MAX_TOKENS = 8000
+
+
+# Structuring is a reasoning call, so it samples, and a sampled response is
+# occasionally not valid JSON: one encounter in the 120-note held-out run
+# (ACI-Bench D2N150) came back with an unescaped quote mid-string. Nothing
+# retried, so that single bad sample aborted the whole eval. Re-calling the
+# same transcript parsed cleanly, which is what makes this a sampling defect
+# and not a prompt defect, and what makes resampling the right answer.
+#
+# The line, which tests/test_structure.py pins: resample the SERIALIZATION,
+# never the CONTENT. Only unparseable JSON is retried. A response that parses
+# but does not match the schema is the model answering the wrong question, and
+# rerolling that would be shopping for a note we like, which is how an accuracy
+# number quietly stops measuring the system it claims to measure.
+#
+# Structured output via tool use would make invalid JSON impossible rather than
+# merely rare, and is the better fix. It changes the shape of the generation
+# call, so it belongs with the intake hardening work and a fresh eval run, not
+# in the middle of scoring one.
+MAX_JSON_ATTEMPTS = 3
 
 
 def structure_note(transcript: str) -> tuple[SoapNote, str, str | None]:
     model, effort = ROUTING["structuring"]
-    raw = call("structuring", system=_SYSTEM, user=transcript, max_tokens=1200)
-    cleaned = _strip_code_fence(raw)
 
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise NoteStructuringError(f"not valid JSON ({exc})", raw) from exc
+    for attempt in range(1, MAX_JSON_ATTEMPTS + 1):
+        raw = call("structuring", system=SYSTEM_PROMPT, user=transcript,
+                   max_tokens=MAX_TOKENS)
+        try:
+            data = extract_json(raw)
+            break
+        except MalformedJSONError as exc:
+            if attempt == MAX_JSON_ATTEMPTS:
+                raise NoteStructuringError(
+                    f"{exc.reason} after {MAX_JSON_ATTEMPTS} attempts",
+                    raw) from exc
 
     if not isinstance(data, dict):
         raise NoteStructuringError("JSON was not an object", raw)

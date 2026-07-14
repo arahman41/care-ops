@@ -23,6 +23,14 @@ data/*
 *.onnx
 whisper_cache/
 
+# P1-4 eval harness. The cache holds raw model responses over transcripts and
+# clinician notes, and the .full.json artifact carries fact text and generated
+# notes, so both are clinical data and fall under the rule above. The redacted
+# artifact next to it carries verdicts only and IS committed: the headline
+# number recomputes from those alone.
+governance/.cache/
+governance/eval_artifacts/*.full.json
+
 # Node
 node_modules/
 dashboard/dist/
