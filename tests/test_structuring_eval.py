@@ -13,7 +13,7 @@ import json
 import pytest
 
 from governance import structuring_eval as se
-from governance.aci_sections import ASSESSMENT, PLAN, SUBJECTIVE
+from governance.aci_sections import ASSESSMENT, PLAN, SOAP_BUCKETS, SUBJECTIVE
 from governance.evaluate import StructuringCounts, score_structuring
 from governance.heldout import HeldoutExample
 from governance.llm_cache import Cache
@@ -177,6 +177,80 @@ def test_an_empty_run_does_not_divide_by_zero(cache):
     result = evaluate_examples([], cache=cache, workers=1)
     assert result.counts == StructuringCounts(0, 0, 0, 0, 0)
     assert result.metrics == score_structuring(StructuringCounts(0, 0, 0, 0, 0))
+
+
+# ---------- PriMock57: refusing to report a placement number that means nothing ----------
+#
+# PriMock57's reference notes are free-text GP shorthand with no section headers,
+# so every SOAP bucket is "acceptable" for every reference fact. Placement
+# accuracy therefore computes to a perfect 1.0 by construction: not because the
+# model filed anything correctly, but because nothing could be filed wrongly.
+#
+# Publishing that 1.0 in eval_runs.accuracy would be the single most dishonest
+# number this project could emit, and it would look like the best result on the
+# board. RunResult.metrics reports None instead, and record_structuring_run
+# writes SQL NULL. These pin that, because the failure is silent.
+
+def _freetext_result() -> se.RunResult:
+    """A PriMock-shaped run: every bucket acceptable, so placement is a no-op."""
+    from governance.facts import Fact
+
+    facts = [Fact("Cough.", frozenset(SOAP_BUCKETS), ""),
+             Fact("URI.", frozenset(SOAP_BUCKETS), "")]
+    verdicts = [
+        se.PresenceVerdict(facts[0], True, SUBJECTIVE),
+        se.PresenceVerdict(facts[1], True, PLAN),
+    ]
+    example = se.ExampleResult(
+        encounter_id="day1_consultation03", fused=False, soap=SOAP,
+        model="stub-model", effort="high", ref_verdicts=verdicts,
+        gen_fact_texts=["Cough.", "URI."], gen_supported=[True, True],
+    )
+    return se.RunResult(
+        dataset_ref="primock57-heldout-v1", structuring_model="stub-model",
+        structuring_effort="high", split_digest="d" * 64, examples=[example],
+        placement_scored=False, highlights_found=3, highlights_total=4,
+    )
+
+
+def test_the_raw_math_really_would_report_a_meaningless_perfect_placement():
+    """The trap this guards is real, not hypothetical. Show it first."""
+    result = _freetext_result()
+    raw = score_structuring(result.counts)
+    assert raw["accuracy"] == pytest.approx(1.0), (
+        "if this is not 1.0 the fixture no longer reproduces the trap")
+
+
+def test_a_freetext_run_reports_no_placement_accuracy_rather_than_a_fake_1():
+    result = _freetext_result()
+    assert result.metrics["accuracy"] is None, (
+        "placement is unscorable against an unsectioned note, so it must be "
+        "declined, not reported as the 1.0 the arithmetic happens to produce")
+    # The scorable metrics are still real and must survive.
+    assert result.metrics["f1"] > 0
+    assert result.metrics["recall"] > 0
+
+
+def test_the_artifact_and_the_db_row_both_carry_the_declined_placement():
+    result = _freetext_result()
+    payload = se._redacted(result)
+
+    assert payload["placement_scored"] is False
+    assert payload["metrics"]["accuracy"] is None
+    # record_structuring_run passes metrics.get("accuracy") straight through to
+    # a nullable column, so None here is what becomes SQL NULL.
+    assert payload["metrics"].get("accuracy", "missing") is None
+
+    # And the highlights recall, which is what PriMock57 is actually scored on,
+    # is reported rather than dropped.
+    assert result.highlights_recall == pytest.approx(0.75)
+
+
+def test_an_aci_run_still_reports_a_real_placement_number():
+    """The None must not leak into the path where placement IS scorable."""
+    result = _freetext_result()
+    result.placement_scored = True
+    assert result.metrics["accuracy"] is not None
 
 
 # ---------- the committed artifacts: CI regression-tests the headline ----------
