@@ -84,3 +84,75 @@ Redrawing the split is a deliberate, logged event, never a routine edit.
 To redraw, bump `SALT` in `shared/splits.py` to `v2`, re-run with
 `--write-lock`, and record why in the commit message. Never adjust
 thresholds or move encounters to chase a metric.
+
+## The harness verifies the split before it scores
+
+`governance/heldout.py` recomputes the manifest from the datasets on disk and
+compares it to the committed lock before a single API call is made. A mismatch
+raises `SplitDriftError` and the run refuses to start. An accuracy computed
+against a drifted split is not slightly wrong, it is meaningless while still
+looking perfectly plausible on a resume, so this is a hard error and never a
+warning.
+
+## Auditing the judge (P1-4)
+
+The headline structuring number is produced by a model (Haiku 4.5, temperature
+0) grading another model. That is only defensible if a human has checked the
+grader, so 30 verdicts were sampled at random from the committed artifact and
+adjudicated by hand.
+
+**Agreement: 29 / 30 (96.7%)**, on run `structuring_aci-bench-heldout-v1_20260714T032403Z`
+(seed 20260713, sampled uniformly from a pool of 13,975 verdicts: 19 presence,
+11 support). Reproduce the sample with that seed to re-audit the same 30.
+
+The one disagreement, and it is recorded because its direction matters:
+
+- **D2N178, presence.** Reference fact "intermittently completes at home blood
+  pressure checks". The generated note says only that "her home blood pressure
+  was 116 on the dot a couple of weeks ago", which is a single reading, not a
+  statement that she checks intermittently. The judge marked it FOUND. That
+  credits an implication, which its own rubric forbids, and it **inflates
+  recall**. At 1 in 30 the effect is small, but it is an optimistic error, so
+  the reported recall should be read as a mild upper bound.
+
+Two things partially offset it, and both are disclosed rather than netted out:
+
+- **Placement is understated by the reference notes' own idiosyncrasies.** In
+  two sampled verdicts (D2N153, D2N168) the reference clinician filed an x-ray
+  or EKG *result* under `PLAN`, while the model filed it under Assessment or
+  Objective. The model earns no placement credit for what is arguably the more
+  standard structuring. ACI-Bench section headers are the ground truth for
+  placement, and they are not always the textbook answer.
+- **The judge catches real hallucinations.** On D2N138 the note claimed the
+  patient "last used nebulizer during a childhood bronchitis episode" when the
+  transcript offers those as two alternatives ("the last time was when I had
+  bronchitis, *or* a few select times when I was a kid"). The judge marked it
+  unsupported. That is exactly the subtle fabrication precision exists to find.
+
+Three further verdicts were borderline and were allowed to stand: "denies drug
+use" (the patient was asked about tobacco, drugs and alcohol and answered only
+about wine, so the denial is by omission), "EKG is unremarkable" against the
+note's "no signs of a heart attack", and "swelling in knees" against "knees
+appear a little inflamed".
+
+## One PriMock57 highlight is excluded from the denominator (P1-4)
+
+PriMock57's held-out consultations carry 30 human-authored `highlights` in the
+raw dataset. **29 are scored.** `day4_consultation04` has exactly one highlight
+and it is an empty string.
+
+A blank annotation is a key concept the annotator never wrote, not one the model
+failed to capture. Left in, it would sit in the highlights-recall denominator as
+a phantom that nothing could ever satisfy, docking the Phase 1 gate metric for a
+fact that does not exist. It is filtered in `load_primock_heldout()`, and
+`judge_presence` now refuses a blank fact outright rather than asking a model to
+grade nothing.
+
+**This exclusion is in our favour, which is exactly why it is written down
+here.** Reported highlights recall is **26 / 29 = 0.897**. Had the blank stayed
+in the denominator it would read 26 / 30 = 0.867. Dropping it raises the gate
+metric by three points, so it is precisely the kind of adjustment that should
+never be applied quietly: the justification has to stand on its own, and a
+reader has to be able to reverse it. The justification is that an empty string
+is not a key concept, and a model cannot capture something the annotator never
+wrote. If you disagree, 26 / 30 is the number.

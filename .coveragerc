@@ -1,0 +1,11 @@
+[run]
+# tests/test_app.py exercises the FastAPI app with starlette's TestClient,
+# which runs the ASGI app on its own thread via anyio's blocking portal.
+# coverage.py's default tracer assumes single-threaded execution; without
+# `concurrency = thread` it can deadlock the moment a traced process spawns a
+# new thread under a large traced surface (reproduced consistently: the full
+# `--cov=shared --cov=services --cov=governance` run hung every time right as
+# test_app.py's first TestClient thread started, while `--cov=services.intake`
+# alone on the same file never did, since the trace overhead only became
+# heavy enough to expose it at full-package scope).
+concurrency = thread

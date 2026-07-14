@@ -85,6 +85,91 @@ Routing is centralized in `shared/llm.py`. Structuring and prior-auth use Sonnet
 
 Note-structuring accuracy, per-agent decision accuracy, end-to-end p95 latency and requests per second, drift detection sensitivity on an injected drop, and test count and coverage. Every claimed metric must be reproducible from a committed script.
 
+## Measured results
+
+### Note structuring, ACI-Bench held-out (n = 120)
+
+| metric | value |
+|---|---|
+| **F1 (headline)** | **0.869** |
+| recall (captured and correctly placed) | 0.786 |
+| precision (grounded in the transcript) | 0.971 |
+| section-placement accuracy | 0.880 |
+| hallucination rate | 0.029 |
+
+Sonnet 5 at high effort, scored by a pinned Haiku 4.5 judge at temperature 0.
+Produced by `scripts/run_structuring_eval.py` (`make eval-structuring`), against
+the frozen held-out split, whose digest the harness re-verifies before it
+scores anything.
+
+The metric is deliberately asymmetric, and the asymmetry is the first thing to
+challenge: **recall is scored against the clinician note** (the gold for what
+matters) and **precision against the transcript** (the gold for what is true),
+because a clinician note is a selective summary, so writing something it omits
+is a legitimate inclusion, while writing something the transcript does not
+support is a hallucination.
+
+Read honestly:
+- 51 of the 120 reference notes fuse `ASSESSMENT AND PLAN`, so a fact from
+  those may sit in either section and still count as placed. On the 69 notes
+  that separate them, strict F1 is **0.869** and strict placement is 0.879, so
+  the leniency is not what is holding the number up.
+- A hand audit of 30 randomly sampled judge verdicts agrees with the judge
+  **29 / 30 (96.7%)**. The single miss inflates recall, so read recall as a mild
+  upper bound. See `docs/HELD-OUT-POLICY.md` for the full audit.
+
+Reproduce the number offline, from the committed verdicts, with zero API calls:
+
+```
+make eval-structuring-replay
+```
+
+The committed artifact carries per-fact verdicts and no clinical text, and CI
+replays it on every run, so the published number is regression-tested rather
+than merely remembered.
+
+### End to end from audio, PriMock57 held-out (n = 7)
+
+The full pipeline with nothing stubbed: two speaker wavs in, Whisper (`base`)
+on each track, merged into dialogue by timestamp, then the same structuring
+prompt and the same fact-level judging. `make eval-structuring-primock`.
+
+| metric | value |
+|---|---|
+| **highlights recall** | **0.897** (26 / 29 human-authored key concepts) |
+| precision (grounded in transcript) | 0.967 |
+| hallucination rate | 0.033 |
+| section-placement accuracy | **not scored** (see below) |
+
+**These numbers are not comparable to the ACI-Bench headline above, and the
+direction of the gap is the opposite of what it looks like.** PriMock57's F1
+computes to 0.899, which is *higher* than the 0.869 headline. That does not
+mean the audio path outperforms the text path. It means the two recalls measure
+different things: ACI-Bench recall demands a fact be captured **and filed in the
+right SOAP section**, while PriMock57 recall demands only that it be **captured**,
+because unsectioned GP notes carry no ground truth for placement. Comparing the
+one thing that *is* common, the raw capture rate:
+
+| | capture rate |
+|---|---|
+| ACI-Bench (clean human transcripts) | 5850 / 6550 = **0.893** |
+| PriMock57 (Whisper from audio) | 215 / 256 = **0.840** |
+
+So the audio path is measurably **worse**, by about five points of capture, which
+is what you would expect once ASR error enters the pipeline. Whisper `base`
+mishears clinical terms ("wheezy" comes back as "weezy") and its coarse segment
+boundaries sometimes land an answer a beat before its question. That degradation
+is inside the measurement on purpose: this is the number for the system as it
+actually runs, not for the system given a perfect transcript.
+
+**Placement is reported as NULL, not as a number.** PriMock57's reference notes
+are free-text GP shorthand with no section headers, so every SOAP bucket is
+acceptable for every fact and placement accuracy computes to a perfect 1.0 by
+construction: not because the model filed anything correctly, but because
+nothing *could* be filed wrongly. `eval_runs.accuracy` is written NULL and the
+replay declines to print it. A 1.0 there would be the most flattering number on
+the board and would mean nothing at all.
+
 ## Where to start
 
 Read `SETUP.md` for environment setup and the first Claude Code prompt, then follow `docs/ROADMAP.md` for the full Phase 0 through Phase 5 plan. `AGENTS.md` and `CLAUDE.md` give AI coding agents the rules and commands.

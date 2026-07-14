@@ -52,3 +52,42 @@ def test_model_size_is_configurable(tmp_path):
     clip = _make_short_clip(tmp_path)
     tiny_text = transcribe(clip, model_size="tiny")
     assert tiny_text.strip() != ""
+
+
+# ---------- P1-4: PriMock57 records each speaker on its own track ----------
+# The merge is pure, so it is tested without audio and runs in CI. Getting this
+# wrong would hand the structurer a transcript where the doctor asks every
+# question before the patient answers any of them, and the SOAP note would be
+# scored against that. Worth pinning on its own.
+
+def test_merge_interleaves_two_speaker_tracks_by_time():
+    from services.intake.transcribe import Turn, merge_tracks
+
+    doctor = [Turn(0.0, "Doctor", "What brings you in?"),
+              Turn(6.0, "Doctor", "How long?")]
+    patient = [Turn(3.0, "Patient", "A cough."),
+               Turn(9.0, "Patient", "Three days.")]
+
+    assert merge_tracks(doctor, patient) == (
+        "Doctor: What brings you in?\n"
+        "Patient: A cough.\n"
+        "Doctor: How long?\n"
+        "Patient: Three days."
+    )
+
+
+def test_merge_does_not_simply_concatenate_the_tracks():
+    # The regression that matters: concatenation would put both doctor turns
+    # first and destroy the question-answer structure of the consultation.
+    from services.intake.transcribe import Turn, merge_tracks
+
+    merged = merge_tracks([Turn(0.0, "Doctor", "Q1"), Turn(6.0, "Doctor", "Q2")],
+                          [Turn(3.0, "Patient", "A1")])
+    assert merged.splitlines()[1].startswith("Patient:")
+
+
+def test_merge_of_an_empty_track_is_safe():
+    from services.intake.transcribe import Turn, merge_tracks
+
+    assert merge_tracks([], [Turn(1.0, "Patient", "Hello")]) == "Patient: Hello"
+    assert merge_tracks([], []) == ""
