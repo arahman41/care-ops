@@ -253,6 +253,29 @@ def test_an_aci_run_still_reports_a_real_placement_number():
     assert result.metrics["accuracy"] is not None
 
 
+def test_replay_declines_placement_too_instead_of_resurrecting_the_fake_1(
+        tmp_path):
+    """The replay tool must reach the same conclusion the run reached.
+
+    replay() recomputes the metrics from the per-fact verdicts, and that
+    arithmetic yields accuracy = 1.0 for a free-text run, because every bucket
+    was acceptable and so nothing could be misplaced. The run itself declined to
+    publish that. If replay republishes it, the number the harness refused to
+    claim walks back in through the tool whose whole job is to prove the
+    harness honest, and it does so while reporting that it "matches the
+    artifact" that stores null.
+    """
+    result = _freetext_result()
+    artifact = write_artifacts(result, out_dir=tmp_path)
+
+    out = replay(artifact)
+
+    assert out["metrics"]["accuracy"] is None, (
+        "replay resurrected the meaningless 1.0 that the run declined")
+    # The scorable metrics must still recompute normally.
+    assert out["metrics"]["f1"] == pytest.approx(result.metrics["f1"])
+
+
 # ---------- the committed artifacts: CI regression-tests the headline ----------
 
 COMMITTED = sorted(p for p in se.ARTIFACT_DIR.glob("*.json")

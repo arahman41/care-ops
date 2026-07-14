@@ -468,6 +468,17 @@ def replay(artifact: Path) -> dict:
 
     metrics = score_structuring(total)
 
+    # Placement is only scorable where the reference note says where a fact
+    # belongs. Where it does not (PriMock57), every bucket was acceptable, so
+    # this arithmetic just produced a 1.0 that means "nothing could be
+    # misplaced" rather than "everything was placed correctly". The run declined
+    # to publish that, and the replay has to reach the same conclusion, or the
+    # number the harness refused to claim reappears through the very tool whose
+    # job is to prove the harness honest. The stored null cannot contradict it,
+    # which is exactly why this has to be explicit.
+    if not payload.get("placement_scored", True):
+        metrics["accuracy"] = None
+
     stored = payload["metrics"]
     for name, value in metrics.items():
         # accuracy is NULL for PriMock57, where placement is not scorable.

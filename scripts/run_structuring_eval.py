@@ -130,7 +130,11 @@ def main() -> int:
         print(f"  F1          {m['f1']:.3f}")
         print(f"  recall      {m['recall']:.3f}")
         print(f"  precision   {m['precision']:.3f}")
-        print(f"  placement   {m['accuracy']:.3f}")
+        # None where the reference notes are not SOAP-sectioned. Printing the
+        # recomputed 1.0 there would republish the number the run declined.
+        placement = m["accuracy"]
+        print(f"  placement   {placement:.3f}" if placement is not None
+              else "  placement   n/a   reference notes are not SOAP-sectioned")
         print("\nRecomputed from the per-fact verdicts and it matches the "
               "artifact.\n")
         return 0

@@ -149,12 +149,22 @@ def load_primock_heldout(data_root: Path = DEFAULT_DATA_ROOT,
         audio = tuple(
             p for p in (audio_dir / f"{group_id}_doctor.wav",
                         audio_dir / f"{group_id}_patient.wav") if p.is_file())
+        # Blank highlights are dropped. day4_consultation04's only annotation in
+        # the raw dataset is an empty string, and an empty string is a key
+        # concept the annotator never wrote, not one the model failed to
+        # capture. Kept, it would sit in the highlights-recall denominator as a
+        # phantom that nothing could ever satisfy, quietly docking the Phase 1
+        # gate metric. The count drops from 30 to 29 and the exclusion is
+        # disclosed in docs/HELD-OUT-POLICY.md rather than silently absorbed.
+        highlights = tuple(
+            h for h in payload.get("highlights", ()) if h and h.strip())
+
         examples.append(HeldoutExample(
             dataset="primock57",
             encounter_id=group_id,
             transcript="",
             reference_note=payload["note"],
-            highlights=tuple(payload.get("highlights", ())),
+            highlights=highlights,
             audio=audio,
         ))
 

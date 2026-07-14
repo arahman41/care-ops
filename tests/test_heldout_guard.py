@@ -66,8 +66,28 @@ def test_primock_heldout_is_the_expected_size_and_carries_highlights():
     assert len(examples) == 7                         # locked in P0-5
     assert all(e.dataset == "primock57" for e in examples)
     assert all(e.reference_note.strip() for e in examples)
-    # The human-authored key concepts are the PriMock57 recall gold.
-    assert sum(len(e.highlights) for e in examples) == 30
+    # The human-authored key concepts are the PriMock57 recall gold. The raw
+    # dataset carries 30 annotations, but one of them is an empty string, and a
+    # blank annotation is a key concept the annotator never wrote rather than
+    # one the model failed to capture. It is dropped at load, so 29 are
+    # scorable. See the test below.
+    assert sum(len(e.highlights) for e in examples) == 29
+
+
+@needs_data
+def test_a_blank_highlight_never_reaches_the_recall_denominator():
+    """day4_consultation04's only highlight in the raw dataset is an empty string.
+
+    Scoring it would put a phantom in the highlights-recall denominator that
+    nothing could ever satisfy, quietly docking the Phase 1 gate metric for an
+    annotation that does not exist. It is filtered at load, and the exclusion is
+    disclosed rather than silently absorbed.
+    """
+    for ex in load_primock_heldout(data_root=DATA_ROOT, lock_path=LOCK_PATH):
+        for highlight in ex.highlights:
+            assert highlight.strip(), (
+                f"{ex.encounter_id} carries a blank highlight, which would "
+                f"become a phantom in the recall denominator")
 
 
 @needs_data

@@ -1,0 +1,3117 @@
+{
+  "counts": {
+    "captured": 215,
+    "correctly_placed": 215,
+    "gen_facts": 457,
+    "ref_facts": 256,
+    "supported": 442
+  },
+  "created_at": "2026-07-14T09:36:50.716738+00:00",
+  "dataset_ref": "primock57-heldout-v1",
+  "examples": [
+    {
+      "encounter_id": "day1_consultation03",
+      "fused": false,
+      "gen": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        }
+      ]
+    },
+    {
+      "encounter_id": "day1_consultation04",
+      "fused": false,
+      "gen": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        }
+      ]
+    },
+    {
+      "encounter_id": "day1_consultation12",
+      "fused": false,
+      "gen": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        }
+      ]
+    },
+    {
+      "encounter_id": "day3_consultation07",
+      "fused": false,
+      "gen": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        }
+      ]
+    },
+    {
+      "encounter_id": "day4_consultation04",
+      "fused": false,
+      "gen": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        }
+      ]
+    },
+    {
+      "encounter_id": "day5_consultation03",
+      "fused": false,
+      "gen": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        }
+      ]
+    },
+    {
+      "encounter_id": "day5_consultation06",
+      "fused": false,
+      "gen": [
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "ref": [
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "subjective"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "assessment"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": false,
+          "section": null
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        },
+        {
+          "acceptable": [
+            "assessment",
+            "objective",
+            "plan",
+            "subjective"
+          ],
+          "found": true,
+          "section": "plan"
+        }
+      ]
+    }
+  ],
+  "fused_ap_notes": 0,
+  "highlights_found": 26,
+  "highlights_recall": 0.896551724137931,
+  "highlights_total": 29,
+  "judge_model": "claude-haiku-4-5-20251001",
+  "metrics": {
+    "accuracy": null,
+    "f1": 0.8990241571944165,
+    "hallucination_rate": 0.03282275711159732,
+    "precision": 0.9671772428884027,
+    "recall": 0.83984375
+  },
+  "n_examples": 7,
+  "placement_scored": false,
+  "prompt_versions": {
+    "decompose": "v1",
+    "presence": "v1",
+    "structuring": "b7b42093e9a7",
+    "support": "v1"
+  },
+  "split_digest": "c6f2d5bfda102a191d5b9592bf5d0ebe1d5e5eb959db1937859afa447a7a7786",
+  "strict_metrics": {
+    "accuracy": 1.0,
+    "f1": 0.8990241571944165,
+    "hallucination_rate": 0.03282275711159732,
+    "precision": 0.9671772428884027,
+    "recall": 0.83984375
+  },
+  "strict_n": 7,
+  "structuring_effort": "high",
+  "structuring_model": "claude-sonnet-5"
+}

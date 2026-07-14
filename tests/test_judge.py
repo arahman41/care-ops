@@ -164,3 +164,36 @@ def test_support_results_are_cached(monkeypatch, cache):
     judge_support("transcript", ["a fact"], cache=cache)
     judge_support("transcript", ["a fact"], cache=cache)
     assert len(calls) == 1
+
+
+# ---------- a blank fact is a phantom in the denominator ----------
+#
+# PriMock57's day4_consultation04 carries exactly one highlight in the raw
+# dataset and it is an empty string. Handing that to the judge asks a model to
+# grade nothing, and whatever it answers, the fact still occupies a slot in the
+# recall denominator that nothing could ever satisfy. The live run surfaced this
+# when the judge replied, reasonably, that the reference facts were empty.
+#
+# Blanks are filtered at load. This is the second line of defence, so that no
+# future caller can slip an ungradeable fact into a metric.
+
+def test_a_blank_reference_fact_is_refused_rather_than_graded(cache):
+    facts = [Fact("Cough for 3 days.", frozenset({SUBJECTIVE}), "HPI"),
+             Fact("   ", frozenset({SUBJECTIVE}), "HPI")]
+    with pytest.raises(JudgeProtocolError, match="denominator"):
+        judge_presence(SOAP, facts, cache)
+
+
+def test_a_blank_generated_fact_is_refused_rather_than_graded(cache):
+    with pytest.raises(JudgeProtocolError, match="denominator"):
+        judge_support("Doctor: any cough? Patient: yes.", ["Cough.", ""], cache)
+
+
+def test_the_blank_guard_fires_before_any_api_call_is_made(monkeypatch, cache):
+    """It must raise on the way in, not after paying for a verdict on nothing."""
+    def explode(*args, **kwargs):
+        raise AssertionError("the judge was called with a blank fact")
+
+    monkeypatch.setattr(judge_mod, "call", explode)
+    with pytest.raises(JudgeProtocolError, match="denominator"):
+        judge_presence(SOAP, [Fact("", frozenset({SUBJECTIVE}), "HPI")], cache)

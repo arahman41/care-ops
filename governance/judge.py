@@ -97,6 +97,29 @@ def _numbered(items: list[str]) -> str:
     return "\n".join(f"{i}. {text}" for i, text in enumerate(items, start=1))
 
 
+def _refuse_blanks(texts: list[str]) -> None:
+    """A fact with no text cannot be graded, and must never be counted.
+
+    Asking a model to decide whether an empty string appears in a note is
+    meaningless, and whatever it answers, that fact still occupies a slot in the
+    denominator that nothing could ever satisfy. The result is a metric quietly
+    docked for a fact that does not exist.
+
+    This is not hypothetical: PriMock57's day4_consultation04 carries exactly
+    one highlight in the raw dataset and it is an empty string. The live run
+    surfaced it when the judge replied, reasonably, that the reference facts
+    were empty. Blanks are filtered at load; this refuses them on the way in, so
+    no future caller can slip one into a score, and it raises before spending.
+    """
+    blank = [i for i, text in enumerate(texts, start=1) if not text.strip()]
+    if blank:
+        raise JudgeProtocolError(
+            f"Facts at positions {blank} have no text. An empty fact cannot be "
+            f"judged, and counting it would leave a phantom in the denominator "
+            f"that nothing can satisfy. Filter blanks before scoring rather "
+            f"than asking a model to grade nothing.")
+
+
 def _verdicts(raw: str, n: int, key_name: str) -> list[dict]:
     """Parse and validate the judge's reply against the question it was asked.
 
@@ -139,6 +162,8 @@ def judge_presence(soap: SoapNote, facts: list[Fact],
     """Was each reference fact captured, and in which section? Recall + placement."""
     if not facts:
         return []
+
+    _refuse_blanks([f.text for f in facts])
 
     generated = (
         f"SUBJECTIVE\n{soap.subjective}\n\n"
@@ -191,6 +216,8 @@ def judge_support(transcript: str, gen_facts: list[str],
     """
     if not gen_facts:
         return []
+
+    _refuse_blanks(gen_facts)
 
     payload = (
         f"TRANSCRIPT\n{transcript}\n\n"

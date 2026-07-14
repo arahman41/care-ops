@@ -134,3 +134,25 @@ use" (the patient was asked about tobacco, drugs and alcohol and answered only
 about wine, so the denial is by omission), "EKG is unremarkable" against the
 note's "no signs of a heart attack", and "swelling in knees" against "knees
 appear a little inflamed".
+
+## One PriMock57 highlight is excluded from the denominator (P1-4)
+
+PriMock57's held-out consultations carry 30 human-authored `highlights` in the
+raw dataset. **29 are scored.** `day4_consultation04` has exactly one highlight
+and it is an empty string.
+
+A blank annotation is a key concept the annotator never wrote, not one the model
+failed to capture. Left in, it would sit in the highlights-recall denominator as
+a phantom that nothing could ever satisfy, docking the Phase 1 gate metric for a
+fact that does not exist. It is filtered in `load_primock_heldout()`, and
+`judge_presence` now refuses a blank fact outright rather than asking a model to
+grade nothing.
+
+**This exclusion is in our favour, which is exactly why it is written down
+here.** Reported highlights recall is **26 / 29 = 0.897**. Had the blank stayed
+in the denominator it would read 26 / 30 = 0.867. Dropping it raises the gate
+metric by three points, so it is precisely the kind of adjustment that should
+never be applied quietly: the justification has to stand on its own, and a
+reader has to be able to reverse it. The justification is that an empty string
+is not a key concept, and a model cannot capture something the annotator never
+wrote. If you disagree, 26 / 30 is the number.
