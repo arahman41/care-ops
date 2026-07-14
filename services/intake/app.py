@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from shared.config import settings
 from shared.db import insert_encounter, insert_note
 from services.intake.structure import structure_note, NoteStructuringError
+from services.intake.transcribe import transcribe
 
 app = FastAPI(title="Care Ops Copilot - Intake")
 
@@ -28,7 +29,6 @@ def intake(req: IntakeRequest):
         raise HTTPException(422, "Provide transcript or audio_path")
 
     if req.audio_path:
-        from services.intake.transcribe import transcribe
         transcript = transcribe(req.audio_path, model_size=settings.whisper_model_size)
         source = "audio"
     else:

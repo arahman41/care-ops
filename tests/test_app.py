@@ -81,8 +81,9 @@ def test_intake_with_a_whitespace_only_transcript_is_422(client, monkeypatch):
 
 
 def test_intake_with_audio_transcribes_then_structures(client, monkeypatch):
-    """The audio branch does its own import, so it is mocked at its own module."""
-    monkeypatch.setattr("services.intake.transcribe.transcribe",
+    """transcribe is imported into app.py's own namespace, so it is mocked there,
+    the same as structure_note below, not at services.intake.transcribe."""
+    monkeypatch.setattr("services.intake.app.transcribe",
                         lambda audio_path, model_size: "Doctor: cough? "
                                                        "Patient: yes.")
     _mock_pipeline(monkeypatch)
