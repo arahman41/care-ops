@@ -89,13 +89,26 @@ separates the citation from the code review that must verify it; YAGNI for four
 rules) and per-rule matcher classes (over-engineered for keyword rules and
 invites the negation-logic scope creep this design explicitly rejects).
 
+**Matching semantics (fixes a latent bug in the placeholder rules).** The
+triggers include prefix stems (`diabet`, `hypertens`, `smok`). The current
+placeholder pattern wraps them as `\b(diabet|...)\b`, and the trailing `\b`
+means the stem never matches the real word: `\bdiabet\b` does not match
+"diabetes" because there is no word boundary between "diabet" and "es". The
+existing `test_diabetes_triggers_a1c_rule` passes only because its note also
+contains "blood sugar". The new rules must use a leading boundary and allow the
+stem to extend, e.g. `\b(?:diabet|a1c|hba1c|blood sugar|hyperglycemia)\w*`, so
+that a bare "diabetes", "hypertension", or "smoker" fires its rule. To pin this,
+at least one firing test per rule uses the bare stem word ("diabetes",
+"hypertension", "high cholesterol", "smoker") as its input, so a regression back
+to a non-matching pattern turns the suite red.
+
 ### 3. The four rules and their citations
 
 Same four clinical domains, each mapped to a real published guideline. Three
 are USPSTF; the diabetes rule is ADA because there is no USPSTF management
 (A1c monitoring interval) recommendation.
 
-| rule_id | triggers (regex alternation, word-bounded) | gap framing | source |
+| rule_id | triggers (regex alternation, prefix-permissive; see matching note) | gap framing | source |
 |---|---|---|---|
 | `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Standards of Care in Diabetes, 2024: Glycemic Goals and Hypoglycemia", grade E, 2024 |
 | `HTN_SCREENING` | hypertens, high blood pressure, elevated bp, elevated blood pressure | "Hypertension mentioned. Confirm blood pressure screening/monitoring is current." | U.S. Preventive Services Task Force, "Hypertension in Adults: Screening", grade A, 2021 |
