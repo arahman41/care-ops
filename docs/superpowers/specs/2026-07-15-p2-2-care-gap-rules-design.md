@@ -76,10 +76,13 @@ citation alongside its trigger and gap text. Concretely, a rule becomes a small
 typed record (a dataclass or `NamedTuple`) with fields `rule_id`, `pattern`,
 `gap`, and `source` (a `CareGapSource`). `rules.py` imports `CareGapSource` from
 `shared/schemas.py` and constructs one per rule. `find_gaps(text)` returns a
-list of dicts shaped `{"gap", "rule_id", "evidence", "source"}` where `source`
-is the citation as a dict, so the existing `app.py` line
-`[CareGapItem(**g) for g in find_gaps(blob)]` continues to work unchanged and
-Pydantic constructs the nested `CareGapSource`.
+list of dicts shaped `{"gap", "rule_id", "evidence", "source"}`. The `source`
+value may be returned either as a `CareGapSource` instance or as its
+`model_dump()` dict; either works, because the existing `app.py` line
+`[CareGapItem(**g) for g in find_gaps(blob)]` lets Pydantic construct (or pass
+through) the nested `CareGapSource` in both cases, so `app.py` needs no change
+for the schema addition. Returning the dumped dict is the marginally cleaner
+choice since `find_gaps` already returns plain dicts for its other fields.
 
 Rejected alternatives: a YAML/JSON rules file (adds a parsing layer and
 separates the citation from the code review that must verify it; YAGNI for four
@@ -94,10 +97,27 @@ are USPSTF; the diabetes rule is ADA because there is no USPSTF management
 
 | rule_id | triggers (regex alternation, word-bounded) | gap framing | source |
 |---|---|---|---|
-| `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Standards of Care in Diabetes 2024: Glycemic Goals and Hypoglycemia", grade E, 2024 |
+| `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Standards of Care in Diabetes, 2024: Glycemic Goals and Hypoglycemia", grade E, 2024 |
 | `HTN_SCREENING` | hypertens, high blood pressure, elevated bp, elevated blood pressure | "Hypertension mentioned. Confirm blood pressure screening/monitoring is current." | U.S. Preventive Services Task Force, "Hypertension in Adults: Screening", grade A, 2021 |
 | `LIPID_SCREENING` | cholesterol, lipid, statin, hyperlipidemia, dyslipidemia | "Lipid/cholesterol topic mentioned. Statin-therapy assessment may be indicated for adults 40-75 with a CVD risk factor." | U.S. Preventive Services Task Force, "Statin Use for the Primary Prevention of Cardiovascular Disease in Adults: Preventive Medication", grade B, 2022 |
-| `TOBACCO_CESSATION` | smok, tobacco, vaping, nicotine, cigarette | "Tobacco use mentioned. Cessation counseling and pharmacotherapy are recommended for adults who use tobacco." | U.S. Preventive Services Task Force, "Tobacco Smoking Cessation in Adults, Including Pregnant Persons: Interventions", grade A, 2021 |
+| `TOBACCO_CESSATION` | smok, tobacco, vaping, nicotine, cigarette | "Tobacco or nicotine use mentioned. Cessation counseling and pharmacotherapy are recommended for adults who smoke; confirm and offer support." | U.S. Preventive Services Task Force, "Tobacco Smoking Cessation in Adults, Including Pregnant Persons: Interventions", grade A, 2021 |
+
+Two citation-typography and scope notes on this table, both to be settled by the
+verification gate below:
+
+- The official ADA title uses an em dash ("Standards of Care in
+  Diabetes-2024"). The project no-em-dash rule forbids storing it verbatim, so
+  the `title` above renders it with a comma. This is a deliberate divergence
+  from official typography, not an error; the verification step should confirm
+  the comma form is acceptable or choose another (colon, dropped year).
+- `TOBACCO_CESSATION` triggers on `vaping`/`nicotine`, but the cited grade A
+  covers behavioral counseling plus FDA-approved pharmacotherapy for smoking;
+  USPSTF issued an I statement (insufficient evidence) for e-cigarettes as a
+  cessation aid in the same 2021 recommendation. The gap text is therefore
+  phrased around "adults who smoke" and must not imply grade-A evidence applies
+  to vaping specifically. The trigger stays (a vaping mention is still a
+  legitimate candidate flag for human review), but the framing does not
+  overclaim the grade.
 
 **Citation verification gate (mandatory before merge).** These citations are
 clinical claims carrying hallucination risk. The `organization`, guideline
@@ -135,6 +155,16 @@ single documented module-level constant (value `0.9`) used in both branches,
 commented as a fixed deterministic-rule-match indicator rather than a calibrated
 probability. This is the one `app.py` change in this task.
 
+### 6. Keep the tech-design doc honest (`docs/TECH-DESIGN.md`)
+
+Section 3.3 of `docs/TECH-DESIGN.md` documents the Care Gap item shape as
+`{"gap": "", "rule_id": "", "evidence": ""}`, which the new `source` field makes
+stale. Update that JSON snippet to include `source` so the published contract
+matches `shared/schemas.py`. This is a one-line doc edit, not a code change, but
+this is a transparency-focused project and a documented shape that no longer
+matches reality is exactly the kind of quiet drift the project rules exist to
+prevent.
+
 ## Testing
 
 `tests/test_care_gap_rules.py` covers the exit criterion "unit tests for every
@@ -142,7 +172,12 @@ rule firing and not firing":
 
 - For each of the four rules: one test with a note that fires it, one test with
   a note that does not fire it. (8 tests.)
-- The existing "clean note fires nothing" test is kept.
+- The two existing tests must be reconciled with the rename, or `make test`
+  goes red. `test_diabetes_triggers_a1c_rule` asserts
+  `rule_id == "A1C_OVERDUE"`, which no longer exists after the rename to
+  `A1C_MONITORING`; update its assertion (or let it be superseded by the new
+  per-rule firing test for `A1C_MONITORING` and delete it, to avoid two tests
+  covering the same case). `test_clean_note_has_no_gaps` is kept as-is.
 - Every fired gap carries a `source` that constructs a valid `CareGapSource`
   with all required fields populated (`organization`, `title`, `year`, `url`
   non-empty).
