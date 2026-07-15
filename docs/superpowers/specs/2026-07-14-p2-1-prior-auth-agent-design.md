@@ -107,7 +107,7 @@ error-handling approach for the same class of problem.
     `PriorAuthError` (via the wrapped `ValidationError` path).
   - The `PriorAuthError` message is truncated for a long raw response,
     mirroring `tests/test_structure.py::test_parse_error_preview_is_truncated`.
-- `tests/test_agent_prior_auth_app.py` (FastAPI `TestClient`, mirroring
+- `tests/test_prior_auth_app.py` (FastAPI `TestClient`, mirroring
   `tests/test_app.py`):
   - `GET /health` returns `{"status": "ok", "service": "agent_prior_auth"}`.
   - `POST /run` happy path returns 200 with the expected body.
