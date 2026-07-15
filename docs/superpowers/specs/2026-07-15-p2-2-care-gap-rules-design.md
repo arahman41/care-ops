@@ -1,0 +1,173 @@
+# P2-2: Care Gap Agent with a real rule set, Design
+
+## Context
+
+Phase 2 (`docs/ROADMAP.md`) builds three agent services. The Care Gap Agent
+(`services/agent_care_gap/`) currently uses four placeholder regex rules with
+no citation to any real guideline:
+
+```python
+RULES = {
+    "A1C_OVERDUE": (r"\b(diabet|a1c|hba1c|blood sugar)\b", "Consider A1c ..."),
+    "BP_FOLLOWUP": (r"\b(hypertens|blood pressure|elevated bp)\b", "Blood pressure ..."),
+    "LIPID_PANEL": (r"\b(cholesterol|statin|lipid)\b", "Lipid panel ..."),
+    "SMOKING_COUNSEL": (r"\b(smok|tobacco|vaping)\b", "Tobacco cessation ..."),
+}
+```
+
+`tests/test_care_gap_rules.py` has only two tests (diabetes fires A1c, a clean
+note fires nothing). The `CareGapItem` schema (`shared/schemas.py`) has fields
+`gap`, `rule_id`, `evidence` and no field for a guideline source.
+
+P2-2's exit criteria from the roadmap:
+
+> Replace the four placeholder rules with citable screening and follow-up
+> guidelines. Done when each rule maps to a documented guideline source and the
+> rules engine has unit tests for every rule firing and not firing.
+
+Per `docs/MODEL-EFFORT-GUIDE.md`, this task is Opus 4.8 at xhigh effort because
+it "needs citable guidelines, high hallucination risk to verify." The
+correctness risk in this task is not in the code; it is in the accuracy of the
+clinical citations. The design treats citation accuracy as a first-class
+verification gate, not an afterthought.
+
+## Design
+
+The agent stays a **purely deterministic keyword-rules engine with no LLM call
+in the matching path.** The tech design (`docs/TECH-DESIGN.md`) explicitly
+values that "the rules engine is fully testable without an LLM," and keeping
+the match deterministic confines the one real hallucination risk (the hardcoded
+citations) to authoring time rather than runtime. No changes to
+`ROUTING`/`shared/llm.py`; the Care Gap Agent does not call a model in v1.
+
+### 1. Schema (`shared/schemas.py`)
+
+Add a structured citation model and attach it to each gap:
+
+```python
+class CareGapSource(BaseModel):
+    organization: str          # e.g. "U.S. Preventive Services Task Force"
+    title: str                 # e.g. "Hypertension in Adults: Screening"
+    grade: str | None = None   # USPSTF "A"/"B", ADA "E"; None if ungraded
+    year: int
+    url: str
+
+
+class CareGapItem(BaseModel):
+    gap: str
+    rule_id: str
+    evidence: str
+    source: CareGapSource      # NEW
+```
+
+`grade` is nullable because not every citable guideline carries a letter grade;
+USPSTF recommendations do, ADA Standards of Care use an A/B/C/E evidence grade,
+and a future non-graded source should not be forced to invent one.
+
+This is the only schema change. It surfaces the citation as a first-class part
+of the output, so it flows to the `agent_decisions` registry row (via the
+existing `output` JSONB column) and is available to the Phase 3 transparency
+report and dashboard without any string parsing.
+
+### 2. Rules engine (`services/agent_care_gap/rules.py`)
+
+Keep `rules.py` a declarative data table, restructured so each rule carries its
+citation alongside its trigger and gap text. Concretely, a rule becomes a small
+typed record (a dataclass or `NamedTuple`) with fields `rule_id`, `pattern`,
+`gap`, and `source` (a `CareGapSource`). `rules.py` imports `CareGapSource` from
+`shared/schemas.py` and constructs one per rule. `find_gaps(text)` returns a
+list of dicts shaped `{"gap", "rule_id", "evidence", "source"}` where `source`
+is the citation as a dict, so the existing `app.py` line
+`[CareGapItem(**g) for g in find_gaps(blob)]` continues to work unchanged and
+Pydantic constructs the nested `CareGapSource`.
+
+Rejected alternatives: a YAML/JSON rules file (adds a parsing layer and
+separates the citation from the code review that must verify it; YAGNI for four
+rules) and per-rule matcher classes (over-engineered for keyword rules and
+invites the negation-logic scope creep this design explicitly rejects).
+
+### 3. The four rules and their citations
+
+Same four clinical domains, each mapped to a real published guideline. Three
+are USPSTF; the diabetes rule is ADA because there is no USPSTF management
+(A1c monitoring interval) recommendation.
+
+| rule_id | triggers (regex alternation, word-bounded) | gap framing | source |
+|---|---|---|---|
+| `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Standards of Care in Diabetes 2024: Glycemic Goals and Hypoglycemia", grade E, 2024 |
+| `HTN_SCREENING` | hypertens, high blood pressure, elevated bp, elevated blood pressure | "Hypertension mentioned. Confirm blood pressure screening/monitoring is current." | U.S. Preventive Services Task Force, "Hypertension in Adults: Screening", grade A, 2021 |
+| `LIPID_SCREENING` | cholesterol, lipid, statin, hyperlipidemia, dyslipidemia | "Lipid/cholesterol topic mentioned. Statin-therapy assessment may be indicated for adults 40-75 with a CVD risk factor." | U.S. Preventive Services Task Force, "Statin Use for the Primary Prevention of Cardiovascular Disease in Adults: Preventive Medication", grade B, 2022 |
+| `TOBACCO_CESSATION` | smok, tobacco, vaping, nicotine, cigarette | "Tobacco use mentioned. Cessation counseling and pharmacotherapy are recommended for adults who use tobacco." | U.S. Preventive Services Task Force, "Tobacco Smoking Cessation in Adults, Including Pregnant Persons: Interventions", grade A, 2021 |
+
+**Citation verification gate (mandatory before merge).** These citations are
+clinical claims carrying hallucination risk. The `organization`, guideline
+`title` (name), and rough `grade` are proposed at authoring confidence, but the
+exact `grade` letter, `year`, and `url` for every rule MUST be verified against
+the primary source before this work merges. The spec review and the
+implementation plan both treat this as an explicit checklist item, and the
+implementation plan's live-verification step includes eyeballing each rendered
+citation. A wrong citation in a transparency-focused clinical tool is worse than
+no tool; do not treat the table above as authoritative without confirmation.
+
+### 4. Honesty framing
+
+Each fired rule is phrased as a candidate flag for clinician review, not a
+confirmed gap (note the "may be", "confirm", "mentioned" hedging in every gap
+string above). A module-level `LIMITATIONS` docstring/constant in `rules.py`,
+and a short note in the service's documentation, state plainly that keyword
+triggers:
+
+- do not handle negation ("patient denies tobacco use" still fires
+  `TOBACCO_CESSATION`),
+- do not verify age, interval, or whether the screening was already done,
+
+so every gap requires human confirmation. This mirrors the prior-auth agent's
+"suggestions for human review" discipline and the SOAP structurer's "never
+invent findings" honesty. Robust context handling is explicitly the job of the
+P5-3 embedding-based Care Gap Agent stretch goal and is out of scope here.
+
+### 5. Confidence (minor honesty fix)
+
+`services/agent_care_gap/app.py` currently sets
+`confidence = 0.9 if gaps else 1.0`. The `1.0` for the no-gaps case overclaims:
+a keyword scan cannot be certain a note contains no care gaps. Replace with a
+single documented module-level constant (value `0.9`) used in both branches,
+commented as a fixed deterministic-rule-match indicator rather than a calibrated
+probability. This is the one `app.py` change in this task.
+
+## Testing
+
+`tests/test_care_gap_rules.py` covers the exit criterion "unit tests for every
+rule firing and not firing":
+
+- For each of the four rules: one test with a note that fires it, one test with
+  a note that does not fire it. (8 tests.)
+- The existing "clean note fires nothing" test is kept.
+- Every fired gap carries a `source` that constructs a valid `CareGapSource`
+  with all required fields populated (`organization`, `title`, `year`, `url`
+  non-empty).
+- A structural test iterating the rule table asserting every rule has a
+  non-empty citation, so no future rule can be added uncited. This enforces the
+  exit criterion in code, not just in this one change.
+
+A separate small test (or an assertion in the structural test) confirms
+`CareGapItem` round-trips with the nested `source` through
+`model_dump()`/reconstruction, so the registry-logging path (which serializes
+`output.model_dump()`) is exercised.
+
+`make test` and `make lint` must be clean. New tests must fail against the
+current placeholder rules before the change (e.g. a test asserting
+`rule_id == "HTN_SCREENING"` fails while the code still says `"BP_FOLLOWUP"`),
+so they are meaningful regression tests rather than tautologies against the new
+code.
+
+## Out of scope
+
+- Negation or clinical-context detection (deferred to P5-3).
+- Any LLM call in the Care Gap path (v1 is deterministic; the tech design's
+  "LLM only for optional phrasing" note is a future option, not this task).
+- Age/interval/already-done verification (impossible from the flat four-string
+  SOAP note and out of scope for a keyword engine).
+- Changes to any other agent, the orchestrator, or `shared/llm.py`.
+- The `CareGapOutput` wrapper shape (unchanged; only `CareGapItem` gains a
+  field).
