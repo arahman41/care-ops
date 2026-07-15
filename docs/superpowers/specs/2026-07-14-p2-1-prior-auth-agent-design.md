@@ -1,4 +1,4 @@
-# P2-1: Prior-Auth Agent — Design
+# P2-1: Prior-Auth Agent, Design
 
 ## Context
 
@@ -51,10 +51,23 @@ error-handling approach for the same class of problem.
   re-raises both as `PriorAuthError` with an appropriate reason string. This
   covers both malformed JSON and legitimate JSON that fails schema validation
   (e.g. a hallucinated `confidence` of 1.5).
+- Mirror `structure_note`'s third guard, not just the two above: after
+  `extract_json` succeeds, check `isinstance(data, dict)` before constructing
+  `PriorAuthOutput(**data)`, and raise `PriorAuthError("JSON was not an
+  object", raw)` if it fails. Without this, a valid-but-non-object response
+  (e.g. a bare JSON array) hits `PriorAuthOutput(**data)` with a non-mapping
+  argument, which raises `TypeError`, not `ValidationError` or
+  `MalformedJSONError`, so it is caught by neither of the two handlers above
+  and propagates as an unhandled exception, exactly the failure mode this
+  task exists to close off.
 - No retry loop. Unlike P1-2's structuring call, prior-auth is a single
   bounded-reasoning call (S5/high per `shared/llm.py::ROUTING`) with a much
-  smaller, more constrained output shape; if this proves to need retries in
-  practice, that is a follow-up, not part of this task.
+  smaller, more constrained output shape. This is an assumption, not a
+  measured tradeoff: P1-2's decision to retry was backed by a concrete
+  empirical rate (1 malformed sample in a 120-note held-out run), and there is
+  no equivalent data for prior-auth yet. If malformed output turns out to be
+  common in practice, adding a bounded retry loop (mirroring
+  `MAX_JSON_ATTEMPTS`) is a follow-up, not part of this task.
 - `log_decision` continues to be called only on success, unchanged from the
   current scaffold.
 
@@ -68,20 +81,32 @@ error-handling approach for the same class of problem.
 
 ### 3. Tests
 
-- `tests/test_prior_auth_agent.py` (LLM call mocked via `monkeypatch` on
-  `shared.llm.call`, mirroring how `tests/test_structure.py` mocks structuring
-  calls):
+- `tests/test_prior_auth_agent.py`. Mock target matters here: `agent.py` does
+  `from shared.llm import call` and `from shared.registry import
+  log_decision`, which binds those names into `services.agent_prior_auth
+  .agent`'s own namespace at import time. Patching `shared.llm.call` or
+  `shared.registry.log_decision` after that has no effect on the
+  already-bound reference, so `monkeypatch` must target
+  `services.agent_prior_auth.agent.call` and
+  `services.agent_prior_auth.agent.log_decision` specifically, exactly as
+  `tests/test_structure.py::_fake_call` patches
+  `services.intake.structure.call` rather than `shared.llm.call`. Cases:
   - Happy path: mocked response with one or more items produces a valid
-    `PriorAuthOutput`, and `log_decision` is called with the expected
-    `encounter_id`, `note_id`, `agent_name="prior_auth"`, `model`, `effort`,
-    `confidence`, and `output`.
+    `PriorAuthOutput`, and the mocked `log_decision` is called with the
+    expected `encounter_id`, `note_id`, `agent_name="prior_auth"`, `model`,
+    `effort`, `confidence`, and `output`.
   - Empty-items path: mocked response `{"items": [], "confidence": ...}`
     round-trips to `PriorAuthOutput(items=[], ...)`, not free text or a
     parsing error. This is the direct test of the roadmap's second exit
     criterion.
   - Malformed JSON in the mocked response raises `PriorAuthError`.
+  - A JSON array instead of a JSON object in the mocked response raises
+    `PriorAuthError` (via the isinstance guard), mirroring
+    `tests/test_structure.py::test_json_array_instead_of_object_raises_clear_parse_error`.
   - A confidence value outside [0, 1] in the mocked response raises
     `PriorAuthError` (via the wrapped `ValidationError` path).
+  - The `PriorAuthError` message is truncated for a long raw response,
+    mirroring `tests/test_structure.py::test_parse_error_preview_is_truncated`.
 - `tests/test_agent_prior_auth_app.py` (FastAPI `TestClient`, mirroring
   `tests/test_app.py`):
   - `GET /health` returns `{"status": "ok", "service": "agent_prior_auth"}`.
@@ -94,10 +119,11 @@ error-handling approach for the same class of problem.
 Before calling this task done, run the agent once against the real Anthropic
 API with two real SOAP notes: one containing a procedure/medication that
 plausibly needs prior auth, and one that plainly does not. Capture both raw
-responses as the evidence for the exit criteria, the same way P1-3 first
+responses (request and response JSON) directly in the chat transcript or PR
+description when this task is handed off for review, the same way P1-3 first
 verified the intake endpoint by hand against a running Postgres before tests
 existed to keep it honest. This is a manual verification step, not a new
-automated test.
+automated test, and does not need to be committed as a fixture.
 
 ## Out of scope
 
