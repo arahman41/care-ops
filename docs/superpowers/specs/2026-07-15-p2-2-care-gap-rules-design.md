@@ -110,19 +110,24 @@ are USPSTF; the diabetes rule is ADA because there is no USPSTF management
 
 | rule_id | triggers (regex alternation, prefix-permissive; see matching note) | gap framing | source |
 |---|---|---|---|
-| `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Standards of Care in Diabetes, 2024: Glycemic Goals and Hypoglycemia", grade E, 2024 |
+| `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Glycemic Goals, Hypoglycemia, and Hyperglycemic Crises" (Standards of Care in Diabetes section 6, recommendation 6.2), grade E, 2026, https://doi.org/10.2337/dc26-S006 |
 | `HTN_SCREENING` | hypertens, high blood pressure, elevated bp, elevated blood pressure | "Hypertension mentioned. Confirm blood pressure screening/monitoring is current." | U.S. Preventive Services Task Force, "Hypertension in Adults: Screening", grade A, 2021 |
-| `LIPID_SCREENING` | cholesterol, lipid, statin, hyperlipidemia, dyslipidemia | "Lipid/cholesterol topic mentioned. Statin-therapy assessment may be indicated for adults 40-75 with a CVD risk factor." | U.S. Preventive Services Task Force, "Statin Use for the Primary Prevention of Cardiovascular Disease in Adults: Preventive Medication", grade B, 2022 |
+| `LIPID_SCREENING` | cholesterol, lipid, statin, hyperlipidemia, dyslipidemia | "Lipid or cholesterol topic mentioned. Confirm lipid screening and CVD risk assessment are current. USPSTF recommends a statin for adults 40-75 who have at least one CVD risk factor and a calculated 10-year CVD risk of 10% or greater." | U.S. Preventive Services Task Force, "Statin Use for the Primary Prevention of Cardiovascular Disease in Adults: Preventive Medication", grade B, 2022 |
 | `TOBACCO_CESSATION` | smok, tobacco, vaping, nicotine, cigarette | "Tobacco or nicotine use mentioned. Cessation counseling and pharmacotherapy are recommended for adults who smoke; confirm and offer support." | U.S. Preventive Services Task Force, "Tobacco Smoking Cessation in Adults, Including Pregnant Persons: Interventions", grade A, 2021 |
 
-Two citation-typography and scope notes on this table, both to be settled by the
-verification gate below:
+Three scope and typography notes on this table:
 
-- The official ADA title uses an em dash ("Standards of Care in
-  Diabetes-2024"). The project no-em-dash rule forbids storing it verbatim, so
-  the `title` above renders it with a comma. This is a deliberate divergence
-  from official typography, not an error; the verification step should confirm
-  the comma form is acceptable or choose another (colon, dropped year).
+- **The ADA em dash dissolves rather than needs a ruling.** The official
+  publication name is "Standards of Care in Diabetes-2026" with a literal em
+  dash, which the project no-em-dash rule forbids storing verbatim. But the em
+  dash belongs to the *publication* name, not the *chapter* name. The full
+  heading is "6. Glycemic Goals, Hypoglycemia, and Hyperglycemic Crises:
+  Standards of Care in Diabetes-2026"; the chapter title (before the colon)
+  contains no em dash. So `title` holds the chapter title verbatim,
+  `organization` holds "American Diabetes Association", `year` holds 2026, and
+  `url` holds the edition-pinned DOI. The citation is complete and unambiguous,
+  nothing is misquoted, and no em dash is ever stored. No typography divergence
+  is required after all.
 - `TOBACCO_CESSATION` triggers on `vaping`/`nicotine`, but the cited grade A
   covers behavioral counseling plus FDA-approved pharmacotherapy for smoking;
   USPSTF issued an I statement (insufficient evidence) for e-cigarettes as a
@@ -131,16 +136,52 @@ verification gate below:
   to vaping specifically. The trigger stays (a vaping mention is still a
   legitimate candidate flag for human review), but the framing does not
   overclaim the grade.
+- `LIPID_SCREENING` carries the same class of overclaim risk, caught at
+  verification. The USPSTF grade B applies to adults 40-75 with at least one CVD
+  risk factor **and** a calculated 10-year CVD risk of 10% or greater. At a
+  10-year risk of 7.5% to under 10% the recommendation drops to grade C
+  ("selectively offer"), and at 76 years or older it is an I statement. The gap
+  text must therefore carry the risk threshold, not just the risk factor, or it
+  attaches a grade B to a broader population than USPSTF graded B.
 
-**Citation verification gate (mandatory before merge).** These citations are
-clinical claims carrying hallucination risk. The `organization`, guideline
-`title` (name), and rough `grade` are proposed at authoring confidence, but the
-exact `grade` letter, `year`, and `url` for every rule MUST be verified against
-the primary source before this work merges. The spec review and the
-implementation plan both treat this as an explicit checklist item, and the
-implementation plan's live-verification step includes eyeballing each rendered
-citation. A wrong citation in a transparency-focused clinical tool is worse than
-no tool; do not treat the table above as authoritative without confirmation.
+**Citation verification gate: COMPLETED 2026-07-16.** Every `organization`,
+`title`, `grade`, `year`, and `url` above was verified against its primary
+source (three USPSTF recommendation pages; the ADA chapter fetched from
+diabetesjournals.org). Results:
+
+| rule_id | verdict |
+|---|---|
+| `HTN_SCREENING` | clean. Title, grade A, 2021 (published April 27, 2021) confirmed verbatim. |
+| `TOBACCO_CESSATION` | clean. Title, grade A, 2021 (published January 19, 2021) confirmed. E-cigarette I statement confirmed, so the caution above is well founded. |
+| `LIPID_SCREENING` | citation clean (title, grade B, published August 23, 2022); **gap text corrected** to add the 10% risk threshold per the note above. |
+| `A1C_MONITORING` | grade E **confirmed correct** verbatim in recommendation 6.2. **Year corrected 2024 to 2026** and **chapter title corrected** (it gained "and Hyperglycemic Crises"). Gap text ("twice yearly if at goal, quarterly if therapy changed or not at goal") confirmed accurate against 6.2 and its narrative. |
+
+Two process notes worth keeping, because they generalize:
+
+1. A web search summary asserted ADA recommendation 6.2 carries grade **B**. The
+   primary source says **E**. Trusting the summary would have converted a
+   correct citation into an incorrect one. Secondary sources do not close this
+   gate; only the primary source does.
+2. `diabetesjournals.org` returns 403 to automated fetchers. The chapter was
+   readable via browser automation against a real Chrome session. Any future
+   re-verification of the ADA citation needs that route.
+
+A wrong citation in a transparency-focused clinical tool is worse than no tool.
+Any future edit to the table above re-opens this gate.
+
+**Citation staleness is a standing liability, not a one-time fix.** The ADA
+chapter states that the Professional Practice Committee updates the Standards of
+Care "annually, or more frequently as warranted." The 2024 citation in the
+original draft of this spec was stale within two editions, which is precisely
+how it arrived here wrong. Pinning `url` to the edition-specific DOI
+(`10.2337/dc26-S006`) means the cited text stays valid permanently, but `year`
+will drift from "current guidance" each January. The USPSTF citations are stable
+over much longer horizons and are not a near-term concern. Mitigation in scope
+for this task, deliberately cheap: a module-level `CITATIONS_VERIFIED_ON` date
+constant in `rules.py` (value `2026-07-16`) and a `LIMITATIONS` line noting the
+ADA source is revised annually. Tests must not hit the network, so this is a
+documented review prompt for a human, not an automated check. Out of scope: any
+automated guideline-freshness service.
 
 ### 4. Honesty framing
 
@@ -152,7 +193,12 @@ triggers:
 
 - do not handle negation ("patient denies tobacco use" still fires
   `TOBACCO_CESSATION`),
-- do not verify age, interval, or whether the screening was already done,
+- do not verify age, interval, or whether the screening was already done, which
+  matters most for `LIPID_SCREENING`, whose cited grade B is scoped to adults
+  40-75 at a specific calculated risk threshold that a keyword scan cannot
+  evaluate,
+- carry citations verified on a fixed date (`CITATIONS_VERIFIED_ON`) against
+  guidelines that are revised on their own schedule, the ADA source annually,
 
 so every gap requires human confirmation. This mirrors the prior-auth agent's
 "suggestions for human review" discipline and the SOAP structurer's "never
