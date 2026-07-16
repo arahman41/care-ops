@@ -47,6 +47,19 @@ class PriorAuthOutput(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+class CareGapSource(BaseModel):
+    """The published guideline a care gap rule implements.
+
+    Verified against primary sources on the date recorded in
+    services/agent_care_gap/rules.py::CITATIONS_VERIFIED_ON.
+    """
+    organization: str               # e.g. "U.S. Preventive Services Task Force"
+    title: str                      # guideline or chapter title, as published
+    grade: str | None = None        # USPSTF A/B/C/I, ADA A/B/C/E; None if ungraded
+    year: int
+    url: str
+
+
 class CareGapItem(BaseModel):
     gap: str                        # e.g. overdue A1c screening
     rule_id: str                    # which rule fired
