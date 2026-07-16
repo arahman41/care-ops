@@ -119,9 +119,11 @@ matching semantics. No citations yet, so the suite stays green.
 `r"\b(diabet|a1c|hba1c|blood sugar)\b"` can never match "diabetes". `\bdiabet\b`
 requires a word boundary between "diabet" and "es", and there isn't one. The
 existing `test_diabetes_triggers_a1c_rule` passes only by accident, because its
-note also contains the full phrase "blood sugar". Every new firing test below
-uses the **bare stem word**, so a regression back to a trailing `\b` turns the
-suite red.
+note also contains the full phrase "blood sugar". Every rule below gets a firing
+test whose input **requires the stem to extend**, so a regression back to a
+trailing `\b` turns the suite red. Note this is not the same as "uses a bare
+stem word": "cholesterol" is a bare stem word that matches either way and pins
+nothing, which is why `LIPID_SCREENING` needs a second firing test.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -130,10 +132,16 @@ Replace the whole contents of `tests/test_care_gap_rules.py`:
 ```python
 """P2-2: the rules engine is deterministic, so it is fully unit testable.
 
-Every firing test below uses a bare stem word ("diabetes", "hypertension",
-"cholesterol", "smoker") on purpose. The pre-P2-2 patterns wrapped prefix
+Each rule has a firing test whose input requires the stem to extend
+("diabetes", "hypertension", "lipids", "smoker"), so a regression to the
+pre-P2-2 pattern shape turns the suite red. Those patterns wrapped prefix
 stems as \\b(diabet|...)\\b, whose trailing \\b prevented the stem from ever
-matching the real word. These tests pin that fix.
+matching the real word.
+
+test_lipid_screening_fires_on_bare_cholesterol is the deliberate exception:
+"cholesterol" is a whole word and matches either way, so it pins the rule's
+rename but not the regex fix. test_lipid_screening_fires_on_plural_lipids
+covers LIPID_SCREENING's fix.
 """
 from services.agent_care_gap.rules import RULES, find_gaps
 
@@ -449,7 +457,7 @@ with `KeyError: 'source'`.
 - [ ] **Step 3: Write the implementation**
 
 First, in `services/agent_care_gap/rules.py`, tighten the `CareGapRule`
-annotation now that no rule holds `None`:
+annotation (the `source=None` replacements below remove the last `None`):
 
 ```python
     source: CareGapSource
@@ -782,9 +790,6 @@ Expected: PASS, no failures. Record the exact count for the phase gate evidence.
 Run: `make lint`
 Expected: `ruff check .` clean, no findings.
 
-If ruff flags the unused `CareGapSource` import from Task 2, it should already
-be used by Task 3; if not, something in Task 3 was skipped.
-
 - [ ] **Step 3: Confirm no em dashes entered the new text**
 
 The gap strings, `LIMITATIONS`, and the citation titles are generated text under
@@ -834,15 +839,19 @@ Expected: the `db` container is up and the schema loads without error.
 - [ ] **Step 2: Start the service in the background**
 
 On Windows, activate the venv inside the same command or it will not take (this
-trapped two subagents during P2-1). `uvicorn` blocks, so background it or use a
-second shell.
+trapped two subagents during P2-1).
 
 ```bash
-source .venv/Scripts/activate && uvicorn services.agent_care_gap.app:app --port 8002 &
+source .venv/Scripts/activate && uvicorn services.agent_care_gap.app:app --port 8002
 ```
 
+`uvicorn` blocks. **Use the Bash tool's `run_in_background` parameter, not a
+trailing `&`.** Each Bash call gets a fresh shell, so a process backgrounded
+with `&` can die before Step 4's curl runs in a later call.
+
 Port 8002 is free: `docker-compose.yml` publishes only 8000 (intake), 8001
-(orchestrator), and 5433 (db).
+(orchestrator), and 5433 (db, remapped because this machine has a native
+postgres on 5432).
 
 - [ ] **Step 3: Seed a real encounter and note**
 
@@ -857,7 +866,9 @@ soap = SoapNote(
     assessment="Hypertension, type 2 diabetes, hyperlipidemia.",
     plan="Follow up in 3 months.",
 )
-encounter_id = insert_encounter(None, "manual-verification")
+# source_type is 'audio' or 'transcript' per db/schema.sql; P2-1 used
+# "transcript" here and reserved "manual-verification" for insert_note's model.
+encounter_id = insert_encounter(None, "transcript")
 note_id = insert_note(encounter_id, soap.model_dump(),
                       "manual-verification", "high")
 print(f"encounter_id={encounter_id} note_id={note_id}")
@@ -880,6 +891,9 @@ curl -s -X POST http://localhost:8002/run -H 'Content-Type: application/json' -d
            "plan": "Follow up in 3 months."}
 }' | python -m json.tool
 ```
+
+(If `python` is not on PATH outside the venv, prefix with
+`source .venv/Scripts/activate &&` as in Steps 2 and 3.)
 
 Expected: HTTP 200, four gaps fire (`A1C_MONITORING`, `HTN_SCREENING`,
 `LIPID_SCREENING`, `TOBACCO_CESSATION`), each with a populated `source`, and
@@ -908,13 +922,17 @@ transparency report will read, and it is the reason `source` is a structured
 model rather than a string.
 
 There is no local `psql` on this machine; run the query through the db
-container:
+container. Both the user and the database are `care_ops` (per
+`docker-compose.yml`), matching the `db-init` precedent at `Makefile:28`:
 
 ```bash
-docker compose exec db psql -U postgres -d careops -c "SELECT output -> 'gaps' -> 0 -> 'source' FROM agent_decisions WHERE agent_name = 'care_gap' ORDER BY id DESC LIMIT 1;"
+docker compose exec db psql -U care_ops -d care_ops -c "SELECT output -> 'gaps' -> 0 -> 'source' FROM agent_decisions WHERE agent_name = 'care_gap' ORDER BY id DESC LIMIT 1;"
 ```
 
-Check the database name against `.env.example` if that connection is refused.
+Do not reach for `-U postgres`: the postgres image names the superuser after
+`POSTGRES_USER`, which this compose file sets to `care_ops`, so a `postgres`
+role is never created and that connection fails before the database name is
+even evaluated.
 
 ---
 
