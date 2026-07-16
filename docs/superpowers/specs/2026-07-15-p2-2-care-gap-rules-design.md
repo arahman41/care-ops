@@ -111,9 +111,9 @@ are USPSTF; the diabetes rule is ADA because there is no USPSTF management
 | rule_id | triggers (regex alternation, prefix-permissive; see matching note) | gap framing | source |
 |---|---|---|---|
 | `A1C_MONITORING` | diabet, a1c, hba1c, blood sugar, hyperglycemia | "Diabetes mentioned. A1c monitoring may be due; ADA suggests at least twice yearly if at goal, quarterly if therapy changed or not at goal. Confirm last A1c date." | American Diabetes Association, "Glycemic Goals, Hypoglycemia, and Hyperglycemic Crises" (Standards of Care in Diabetes section 6, recommendation 6.2), grade E, 2026, https://doi.org/10.2337/dc26-S006 |
-| `HTN_SCREENING` | hypertens, high blood pressure, elevated bp, elevated blood pressure | "Hypertension mentioned. Confirm blood pressure screening/monitoring is current." | U.S. Preventive Services Task Force, "Hypertension in Adults: Screening", grade A, 2021 |
-| `LIPID_SCREENING` | cholesterol, lipid, statin, hyperlipidemia, dyslipidemia | "Lipid or cholesterol topic mentioned. Confirm lipid screening and CVD risk assessment are current. USPSTF recommends a statin for adults 40-75 who have at least one CVD risk factor and a calculated 10-year CVD risk of 10% or greater." | U.S. Preventive Services Task Force, "Statin Use for the Primary Prevention of Cardiovascular Disease in Adults: Preventive Medication", grade B, 2022 |
-| `TOBACCO_CESSATION` | smok, tobacco, vaping, nicotine, cigarette | "Tobacco or nicotine use mentioned. Cessation counseling and pharmacotherapy are recommended for adults who smoke; confirm and offer support." | U.S. Preventive Services Task Force, "Tobacco Smoking Cessation in Adults, Including Pregnant Persons: Interventions", grade A, 2021 |
+| `HTN_SCREENING` | hypertens, high blood pressure, elevated bp, elevated blood pressure | "Hypertension mentioned. Confirm blood pressure screening/monitoring is current." | U.S. Preventive Services Task Force, "Hypertension in Adults: Screening", grade A, 2021, https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening |
+| `LIPID_SCREENING` | cholesterol, lipid, statin, hyperlipidemia, dyslipidemia | "Lipid or cholesterol topic mentioned. Confirm lipid screening and CVD risk assessment are current. USPSTF recommends a statin for adults 40-75 who have at least one CVD risk factor and a calculated 10-year CVD risk of 10% or greater." | U.S. Preventive Services Task Force, "Statin Use for the Primary Prevention of Cardiovascular Disease in Adults: Preventive Medication", grade B, 2022, https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication |
+| `TOBACCO_CESSATION` | smok, tobacco, vaping, nicotine, cigarette | "Tobacco or nicotine use mentioned. Cessation counseling and pharmacotherapy are recommended for adults who smoke; confirm and offer support." | U.S. Preventive Services Task Force, "Tobacco Smoking Cessation in Adults, Including Pregnant Persons: Interventions", grade A, 2021, https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/tobacco-use-in-adults-and-pregnant-women-counseling-and-interventions |
 
 Three scope and typography notes on this table:
 
@@ -156,7 +156,7 @@ diabetesjournals.org). Results:
 | `LIPID_SCREENING` | citation clean (title, grade B, published August 23, 2022); **gap text corrected** to add the 10% risk threshold per the note above. |
 | `A1C_MONITORING` | grade E **confirmed correct** verbatim in recommendation 6.2. **Year corrected 2024 to 2026** and **chapter title corrected** (it gained "and Hyperglycemic Crises"). Gap text ("twice yearly if at goal, quarterly if therapy changed or not at goal") confirmed accurate against 6.2 and its narrative. |
 
-Two process notes worth keeping, because they generalize:
+Three process notes worth keeping, because they generalize:
 
 1. A web search summary asserted ADA recommendation 6.2 carries grade **B**. The
    primary source says **E**. Trusting the summary would have converted a
@@ -165,6 +165,12 @@ Two process notes worth keeping, because they generalize:
 2. `diabetesjournals.org` returns 403 to automated fetchers. The chapter was
    readable via browser automation against a real Chrome session. Any future
    re-verification of the ADA citation needs that route.
+3. **The `TOBACCO_CESSATION` URL slug looks wrong and is right.** It reads
+   `tobacco-use-in-adults-and-pregnant-women-counseling-and-interventions`,
+   which is the 2015-era title, not the 2021 title recorded above. USPSTF keeps
+   the legacy slug when a recommendation is retitled. This URL was fetched
+   during the gate and returns the current 2021 grade A recommendation under its
+   current title. Do not "fix" it to match the title.
 
 A wrong citation in a transparency-focused clinical tool is worse than no tool.
 Any future edit to the table above re-opens this gate.

@@ -170,6 +170,17 @@ def test_lipid_screening_fires_on_bare_cholesterol():
     assert "LIPID_SCREENING" in _rule_ids("History of high cholesterol.")
 
 
+def test_lipid_screening_fires_on_plural_lipids():
+    """LIPID_SCREENING's regression pin.
+
+    Unlike the other rules, this one's spec-named stem word ("high
+    cholesterol") is a whole word, so it matches even under the buggy
+    trailing-\\b pattern and cannot pin the fix. "lipids" can: \\blipid\\b
+    fails on it, \\blipid\\w* succeeds.
+    """
+    assert "LIPID_SCREENING" in _rule_ids("Recheck lipids in 3 months.")
+
+
 def test_lipid_screening_does_not_fire_without_lipid_terms():
     assert "LIPID_SCREENING" not in _rule_ids("Patient reports allergies.")
 
@@ -208,20 +219,41 @@ the same case more strictly. `test_clean_note_has_no_gaps` is kept as-is.
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `pytest tests/test_care_gap_rules.py -q`
-Expected: FAIL at import, `ImportError: cannot import name 'RULES'` is not the
-failure you want to stop at, because `RULES` does exist today as a dict. The
-real expected failures are:
-- `test_a1c_monitoring_fires_on_bare_diabetes` FAILS (rule is named
-  `A1C_OVERDUE`, and the trailing `\b` stops "diabetes" matching anyway)
-- `test_htn_screening_fires_on_bare_hypertension` FAILS (named `BP_FOLLOWUP`)
-- `test_lipid_screening_fires_on_bare_cholesterol` FAILS (named `LIPID_PANEL`)
-- `test_tobacco_cessation_fires_on_bare_smoker` FAILS (named `SMOKING_COUNSEL`)
-- `test_rule_ids_are_unique` FAILS (`RULES` is a dict, so `r.rule_id` raises
-  `AttributeError` on the key string)
 
-Confirm at least the four naming/regex failures appear before continuing. If
-`test_a1c_monitoring_fires_on_bare_diabetes` passes, the regex fix is not being
-tested and the test input is wrong.
+Note the import will NOT fail: `RULES` does exist today, as a dict. The expected
+failures, and **why each one fails matters** because it tells you whether the red
+you are seeing is the red you want:
+
+| Test | Fails because | Current `find_gaps` output |
+|---|---|---|
+| `test_a1c_monitoring_fires_on_bare_diabetes` | **the regex bug**, `\bdiabet\b` cannot match "diabetes". The rename is incidental. | `[]` |
+| `test_htn_screening_fires_on_bare_hypertension` | **the regex bug**, `\bhypertens\b` cannot match "hypertension". | `[]` |
+| `test_tobacco_cessation_fires_on_bare_smoker` | **the regex bug**, `\bsmok\b` cannot match "smoker". | `[]` |
+| `test_lipid_screening_fires_on_bare_cholesterol` | **the rename only.** "cholesterol" is a whole word, so it matches even under the buggy pattern. This test does not pin the regex fix, which is why the next one exists. | `[{"rule_id": "LIPID_PANEL", ...}]` |
+| `test_lipid_screening_fires_on_plural_lipids` | **the regex bug**, `\blipid\b` cannot match "lipids". This is LIPID_SCREENING's regression pin. | `[]` |
+| `test_evidence_records_the_matched_span` | `StopIteration`, since `find_gaps` returns `[]` for "Patient has diabetes." | `[]` |
+| `test_rule_ids_are_unique` | `AttributeError`, `RULES` is a dict so iterating yields key strings, which have no `.rule_id` | n/a |
+
+Three of the four bare-stem firing tests fail on the regex bug, which is the
+point of the task. If any of those three PASSES, the regex fix is not being
+tested and the test input is wrong: stop and fix the test, not the code.
+
+- [ ] **Step 2a: Confirm the regex bug is real before fixing it**
+
+Do not take the table above on faith. Reproduce it:
+
+```bash
+python -c "
+import re
+old = r'\b(diabet|a1c|hba1c|blood sugar)\b'
+print('old pattern on \'diabetes\':', re.search(old, 'patient has diabetes.'))
+new = r'\b(?:diabet|a1c|hba1c|blood sugar|hyperglycemia)\w*'
+print('new pattern on \'diabetes\':', re.search(new, 'patient has diabetes.'))
+"
+```
+
+Expected: `None` for the old pattern (this is the bug), a match object spanning
+`diabetes` for the new one.
 
 - [ ] **Step 3: Write the minimal implementation**
 
@@ -270,9 +302,9 @@ Every gap is a candidate flag for clinician review, never a confirmed gap.
 
 class CareGapRule(NamedTuple):
     rule_id: str
-    pattern: str        # matched against lowercased note text
+    pattern: str                    # matched against lowercased note text
     gap: str
-    source: CareGapSource
+    source: CareGapSource | None    # Task 3 fills these in and drops the None
 
 
 RULES: tuple[CareGapRule, ...] = (
@@ -288,8 +320,8 @@ RULES: tuple[CareGapRule, ...] = (
         rule_id="HTN_SCREENING",
         pattern=(r"\b(?:hypertens|high blood pressure|elevated bp"
                  r"|elevated blood pressure)\w*"),
-        gap=("Hypertension mentioned. Confirm blood pressure screening and "
-             "monitoring are current."),
+        gap=("Hypertension mentioned. Confirm blood pressure "
+             "screening/monitoring is current."),
         source=None,  # added in Task 3
     ),
     CareGapRule(
@@ -325,14 +357,16 @@ def find_gaps(text: str) -> list[dict]:
 ```
 
 `source=None` is a deliberate two-step: Task 3 fills it in together with the
-required `CareGapItem.source` field, so each commit leaves the suite green. The
-`CareGapSource` import is unused until then; if ruff flags F401, move the import
-to Task 3 rather than adding a noqa.
+required `CareGapItem.source` field, so each commit leaves the suite green.
+Nothing enforces the `None` away in the meantime (`NamedTuple` does no runtime
+validation and `make lint` is ruff only, no mypy), so the guard is
+`test_every_rule_has_a_complete_citation` in Task 3, which fails loudly on any
+rule still holding `None`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_care_gap_rules.py -q`
-Expected: PASS (11 tests).
+Expected: PASS (12 tests).
 
 Then confirm nothing else regressed on the rename:
 
@@ -414,7 +448,14 @@ with `KeyError: 'source'`.
 
 - [ ] **Step 3: Write the implementation**
 
-First, in `shared/schemas.py`, add the required field to `CareGapItem`:
+First, in `services/agent_care_gap/rules.py`, tighten the `CareGapRule`
+annotation now that no rule holds `None`:
+
+```python
+    source: CareGapSource
+```
+
+Then, in `shared/schemas.py`, add the required field to `CareGapItem`:
 
 ```python
 class CareGapItem(BaseModel):
@@ -501,7 +542,7 @@ the nested `CareGapSource` from the dict, so `app.py` needs no change here.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_care_gap_rules.py -q`
-Expected: PASS (15 tests).
+Expected: PASS (16 tests).
 
 Run: `pytest -q`
 Expected: PASS.
@@ -514,6 +555,20 @@ the grade and year on the page match the record. The ADA DOI must resolve to
 "6. Glycemic Goals, Hypoglycemia, and Hyperglycemic Crises: Standards of Care in
 Diabetes-2026". Note that `diabetesjournals.org` blocks automated fetchers, so
 use a real browser for that one.
+
+**If a page disagrees with the record, STOP and raise it with the user. Do not
+edit the citation.** This is the one step in the task that can reopen a closed
+verification gate, and the two traps named at the top of this plan both look
+exactly like "the page disagrees" at first glance. Expect these two in
+particular, neither of which is a mismatch:
+
+- The `TOBACCO_CESSATION` URL slug says
+  `tobacco-use-in-adults-and-pregnant-women-counseling-and-interventions`, the
+  2015 title. USPSTF keeps legacy slugs through retitles. The page it loads is
+  the current 2021 grade A recommendation. Correct as recorded.
+- The USPSTF statin page shows grades B, C, and I. `B` is the one this rule
+  cites, for adults 40-75 with a risk factor and 10-year risk >=10%. The others
+  are different populations, not corrections.
 
 - [ ] **Step 6: Commit**
 
@@ -537,46 +592,76 @@ certainty that a note contains no care gaps, which a keyword scan cannot know.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/test_care_gap_app.py`:
+Create `tests/test_care_gap_app.py`. This mirrors the structure of
+`tests/test_prior_auth_app.py` (a `client` fixture, `monkeypatch.setattr`, a
+`/health` test) rather than inventing a second endpoint-test style. Note this is
+the first test in the repo to stub `log_decision`: the prior-auth app never calls
+it directly, so there is no existing example to copy. The patch target is
+`services.agent_care_gap.app.log_decision`, because `app.py` does
+`from shared.registry import log_decision`, which binds the name into the app
+module's namespace. Stubbing it is what keeps this test off the database.
 
 ```python
-"""P2-2: the care gap endpoint reports a fixed, honest confidence."""
-from unittest.mock import patch
+"""P2-2: the care gap endpoint's wiring. The rules engine's own correctness
+is covered by tests/test_care_gap_rules.py. This file's job is the endpoint:
+is the confidence honest, and does a rule's citation survive the trip out?
 
+log_decision is stubbed so these stay unit tests. The real registry write is
+exercised by hand in the plan's live-verification task.
+"""
+from __future__ import annotations
+
+import pytest
 from fastapi.testclient import TestClient
 
 from services.agent_care_gap.app import RULE_MATCH_CONFIDENCE, app
 
-client = TestClient(app)
-
-_NOTE = {"encounter_id": 1, "note_id": 1,
-         "soap": {"subjective": "s", "objective": "o",
-                  "assessment": "a", "plan": "p"}}
+SOAP = {"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"}
 
 
-def _post(subjective: str):
-    body = {**_NOTE, "soap": {**_NOTE["soap"], "subjective": subjective}}
-    with patch("services.agent_care_gap.app.log_decision"):
-        return client.post("/run", json=body).json()
+@pytest.fixture
+def client():
+    return TestClient(app)
 
 
-def test_a_clean_note_does_not_claim_certainty():
+@pytest.fixture(autouse=True)
+def _no_registry_writes(monkeypatch):
+    monkeypatch.setattr("services.agent_care_gap.app.log_decision",
+                        lambda **kwargs: None)
+
+
+def _post(client, subjective: str):
+    resp = client.post("/run", json={
+        "encounter_id": 1, "note_id": 1,
+        "soap": {**SOAP, "subjective": subjective},
+    })
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_health_returns_ok(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "service": "agent_care_gap"}
+
+
+def test_a_clean_note_does_not_claim_certainty(client):
     """A keyword scan cannot be certain a note has no gaps, so the no-gap
     case must not report 1.0."""
-    out = _post("Patient here for a routine ankle check.")
+    out = _post(client, "Patient here for a routine ankle check.")
     assert out["gaps"] == []
     assert out["confidence"] == RULE_MATCH_CONFIDENCE
     assert out["confidence"] < 1.0
 
 
-def test_a_fired_rule_reports_the_same_fixed_confidence():
-    out = _post("Patient has diabetes.")
+def test_a_fired_rule_reports_the_same_fixed_confidence(client):
+    out = _post(client, "Patient has diabetes.")
     assert out["gaps"]
     assert out["confidence"] == RULE_MATCH_CONFIDENCE
 
 
-def test_a_fired_gap_carries_its_citation_through_the_endpoint():
-    out = _post("Patient has diabetes.")
+def test_a_fired_gap_carries_its_citation_through_the_endpoint(client):
+    out = _post(client, "Patient has diabetes.")
     gap = next(g for g in out["gaps"] if g["rule_id"] == "A1C_MONITORING")
     assert gap["source"]["url"] == "https://doi.org/10.2337/dc26-S006"
 ```
@@ -615,7 +700,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_care_gap_app.py -q`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -669,8 +754,12 @@ parsing. `grade` is nullable for ungraded sources.
 - [ ] **Step 2: Verify the doc matches the code**
 
 Run: `grep -n "source" docs/TECH-DESIGN.md`
-Expected: the new block appears. Cross-check its field names against
-`shared/schemas.py::CareGapSource` by eye; they must match exactly.
+Expected: two hits, the new block plus a pre-existing line 137 ("source type and
+external ref") that is unrelated. The second hit is not a failure.
+
+Cross-check the new block's field names against `shared/schemas.py::CareGapSource`
+by eye; they must match exactly, since the whole point of this task is that the
+published contract and the code agree.
 
 - [ ] **Step 3: Commit**
 
@@ -701,50 +790,112 @@ be used by Task 3; if not, something in Task 3 was skipped.
 The gap strings, `LIMITATIONS`, and the citation titles are generated text under
 the project's no-em-dash rule.
 
-Run: `grep -n $'[—–]' services/agent_care_gap/rules.py shared/schemas.py docs/TECH-DESIGN.md`
-Expected: no output. The ADA publication name legitimately contains an em dash,
-which is why only the chapter title is stored; if this grep hits, the wrong
-string was transcribed.
+Run:
+```bash
+grep -n $'[—–]' services/agent_care_gap/rules.py services/agent_care_gap/app.py \
+  shared/schemas.py docs/TECH-DESIGN.md \
+  tests/test_care_gap_rules.py tests/test_care_gap_app.py tests/test_schemas.py
+```
+Expected: no output. Every one of these files gained generated text in this
+task, including `app.py`'s new confidence comment and both test files.
+
+The ADA publication name legitimately contains an em dash, which is exactly why
+only the chapter title is stored; if this grep hits `rules.py`, the wrong string
+was transcribed and the citation is now a misquote.
 
 ---
 
 ### Task 7: Live verification
 
-The unit tests mock nothing here (there is no LLM in this path), but the
-rendered output should still be eyeballed once.
+The unit tests stub the registry, so this is the only place the real
+`log_decision` write runs. That write is part of the evidence, not a side
+effect: Step 5's query can only find a row because Step 4's request actually
+persisted one.
 
-- [ ] **Step 1: Start the service**
+**Do not hardcode `encounter_id: 1, note_id: 1`.** `agent_decisions` declares
+`NOT NULL REFERENCES encounters(id)` and `NOT NULL REFERENCES notes(id)` (see
+`db/schema.sql`), and `make db-init` seeds neither table. Since
+`services/agent_care_gap/app.py` calls `log_decision` *before* `return out`, a
+hardcoded ID does not produce a nice error, it produces an unhandled 500 in
+place of the response you came to inspect. P2-1 hit this exact constraint; mint
+real rows with `insert_encounter`/`insert_note` from `shared/db.py`, the same
+helpers `services/intake/app.py` uses.
 
-On Windows, activate the venv inside the same command or it will not take
-(this trapped two subagents during P2-1):
+- [ ] **Step 1: Start Postgres**
+
+Docker needs a manual start on this machine.
 
 ```bash
-source .venv/Scripts/activate && uvicorn services.agent_care_gap.app:app --port 8002
+docker compose up -d db && make db-init
 ```
 
-- [ ] **Step 2: Post a note that fires several rules**
+Expected: the `db` container is up and the schema loads without error.
+
+- [ ] **Step 2: Start the service in the background**
+
+On Windows, activate the venv inside the same command or it will not take (this
+trapped two subagents during P2-1). `uvicorn` blocks, so background it or use a
+second shell.
+
+```bash
+source .venv/Scripts/activate && uvicorn services.agent_care_gap.app:app --port 8002 &
+```
+
+Port 8002 is free: `docker-compose.yml` publishes only 8000 (intake), 8001
+(orchestrator), and 5433 (db).
+
+- [ ] **Step 3: Seed a real encounter and note**
+
+```bash
+source .venv/Scripts/activate && python - <<'EOF'
+from shared.db import insert_encounter, insert_note
+from shared.schemas import SoapNote
+
+soap = SoapNote(
+    subjective="Patient is a smoker with diabetes and high cholesterol.",
+    objective="BP 152/94. Recheck lipids in 3 months.",
+    assessment="Hypertension, type 2 diabetes, hyperlipidemia.",
+    plan="Follow up in 3 months.",
+)
+encounter_id = insert_encounter(None, "manual-verification")
+note_id = insert_note(encounter_id, soap.model_dump(),
+                      "manual-verification", "high")
+print(f"encounter_id={encounter_id} note_id={note_id}")
+print(soap.model_dump_json())
+EOF
+```
+
+Expected: real integer IDs printed. Use them in Step 4.
+
+- [ ] **Step 4: Post the note, using the IDs from Step 3**
+
+Substitute the real IDs for `<ENCOUNTER_ID>` and `<NOTE_ID>`:
 
 ```bash
 curl -s -X POST http://localhost:8002/run -H 'Content-Type: application/json' -d '{
-  "encounter_id": 1, "note_id": 1,
+  "encounter_id": <ENCOUNTER_ID>, "note_id": <NOTE_ID>,
   "soap": {"subjective": "Patient is a smoker with diabetes and high cholesterol.",
-           "objective": "BP 152/94.", "assessment": "Hypertension.", "plan": "Follow up."}
+           "objective": "BP 152/94. Recheck lipids in 3 months.",
+           "assessment": "Hypertension, type 2 diabetes, hyperlipidemia.",
+           "plan": "Follow up in 3 months."}
 }' | python -m json.tool
 ```
 
-Expected: four gaps fire (`A1C_MONITORING`, `HTN_SCREENING`, `LIPID_SCREENING`,
-`TOBACCO_CESSATION`), each with a populated `source`, and `confidence` 0.9.
+Expected: HTTP 200, four gaps fire (`A1C_MONITORING`, `HTN_SCREENING`,
+`LIPID_SCREENING`, `TOBACCO_CESSATION`), each with a populated `source`, and
+`confidence` 0.9. A 500 here means the FK problem above was not avoided.
 
-- [ ] **Step 3: Eyeball each rendered citation**
+- [ ] **Step 5: Eyeball each rendered citation**
 
 Read the four `source` blocks in the response. Confirm each organization,
-title, grade, year, and url matches the spec's verified table. This is the last
-human check before the citations ship.
+title, grade, year, and url matches the spec's verified table in section 3.
+This is the last human check before the citations ship. The same
+stop-do-not-edit rule from Task 3 Step 5 applies.
 
-- [ ] **Step 4: Confirm the registry row carries the citation**
+- [ ] **Step 6: Confirm the registry row carries the citation**
 
-The decision is logged via `log_decision(... output=out.model_dump() ...)`.
-Confirm the nested source survived into the `output` JSONB column:
+Step 4 succeeding means `log_decision` wrote a real row. Confirm the nested
+source survived into the `output` JSONB column:
 
 ```sql
 SELECT output -> 'gaps' -> 0 -> 'source'
@@ -753,7 +904,17 @@ ORDER BY id DESC LIMIT 1;
 ```
 
 Expected: the full citation object, not null. This is what the Phase 3
-transparency report will read.
+transparency report will read, and it is the reason `source` is a structured
+model rather than a string.
+
+There is no local `psql` on this machine; run the query through the db
+container:
+
+```bash
+docker compose exec db psql -U postgres -d careops -c "SELECT output -> 'gaps' -> 0 -> 'source' FROM agent_decisions WHERE agent_name = 'care_gap' ORDER BY id DESC LIMIT 1;"
+```
+
+Check the database name against `.env.example` if that connection is refused.
 
 ---
 
@@ -765,8 +926,11 @@ rules engine has unit tests for every rule firing and not firing."
 - [ ] All four rules carry a `CareGapSource` verified against a primary source
 - [ ] `test_every_rule_has_a_complete_citation` enforces that in code, so no
       future rule can be added uncited
-- [ ] Eight fire/no-fire tests, one pair per rule, each firing test using a
-      bare stem word
+- [ ] At least one fire and one no-fire test per rule (nine total: five firing,
+      four not), with every rule's regex fix pinned by a firing test whose input
+      requires the stem to extend. `LIPID_SCREENING` needs two firing tests to
+      get that pin, because "cholesterol" is a whole word and matches even under
+      the buggy pattern.
 - [ ] `make test` green, `make lint` clean, counts recorded
 - [ ] Live run shows the citations rendered in the response and persisted to
       `agent_decisions.output`
