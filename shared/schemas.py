@@ -64,6 +64,7 @@ class CareGapItem(BaseModel):
     gap: str                        # e.g. overdue A1c screening
     rule_id: str                    # which rule fired
     evidence: str                   # text span or reason
+    source: CareGapSource           # the guideline this rule implements
 
 
 class CareGapOutput(BaseModel):

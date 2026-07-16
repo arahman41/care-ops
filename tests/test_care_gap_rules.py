@@ -11,7 +11,7 @@ test_lipid_screening_fires_on_bare_cholesterol is the deliberate exception:
 rename but not the regex fix. test_lipid_screening_fires_on_plural_lipids
 covers LIPID_SCREENING's fix.
 """
-from services.agent_care_gap.rules import RULES, find_gaps
+from services.agent_care_gap.rules import CITATIONS_VERIFIED_ON, RULES, find_gaps
 
 
 def _rule_ids(text: str) -> set[str]:
@@ -86,3 +86,42 @@ def test_evidence_records_the_matched_span():
 def test_rule_ids_are_unique():
     ids = [r.rule_id for r in RULES]
     assert len(ids) == len(set(ids))
+
+
+# ---------- citations ----------
+
+def test_every_rule_has_a_complete_citation():
+    """The P2-2 exit criterion, enforced in code: no rule may be uncited.
+
+    This is what stops a future rule being added without a guideline.
+    """
+    for rule in RULES:
+        src = rule.source
+        assert src is not None, f"{rule.rule_id} has no source"
+        assert src.organization, f"{rule.rule_id} has no organization"
+        assert src.title, f"{rule.rule_id} has no title"
+        assert src.url.startswith("https://"), f"{rule.rule_id} url: {src.url}"
+        assert 2000 <= src.year <= 2100, f"{rule.rule_id} year: {src.year}"
+
+
+def test_fired_gaps_carry_their_citation():
+    hits = find_gaps("Patient has diabetes.")
+    a1c = next(h for h in hits if h["rule_id"] == "A1C_MONITORING")
+    assert a1c["source"]["organization"] == "American Diabetes Association"
+    assert a1c["source"]["grade"] == "E"
+
+
+def test_care_gap_item_round_trips_with_nested_source():
+    """The registry logs output.model_dump(), so the nested model must survive."""
+    from shared.schemas import CareGapItem
+
+    hits = find_gaps("Patient is a smoker.")
+    item = CareGapItem(**next(h for h in hits
+                              if h["rule_id"] == "TOBACCO_CESSATION"))
+    dumped = item.model_dump()
+    assert CareGapItem(**dumped) == item
+    assert dumped["source"]["grade"] == "A"
+
+
+def test_citations_verified_date_is_recorded():
+    assert CITATIONS_VERIFIED_ON == "2026-07-16"

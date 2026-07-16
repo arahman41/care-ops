@@ -42,7 +42,7 @@ class CareGapRule(NamedTuple):
     rule_id: str
     pattern: str                    # matched against lowercased note text
     gap: str
-    source: CareGapSource | None    # Task 3 fills these in and drops the None
+    source: CareGapSource
 
 
 RULES: tuple[CareGapRule, ...] = (
@@ -52,7 +52,17 @@ RULES: tuple[CareGapRule, ...] = (
         gap=("Diabetes mentioned. A1c monitoring may be due; ADA suggests at "
              "least twice yearly if at goal, quarterly if therapy changed or "
              "not at goal. Confirm last A1c date."),
-        source=None,  # added in Task 3
+        # A1C_MONITORING, implements Standards of Care in Diabetes
+        # recommendation 6.2. The publication name contains an em dash; the
+        # chapter title does not, so the chapter title is stored verbatim and
+        # the DOI pins the edition.
+        source=CareGapSource(
+            organization="American Diabetes Association",
+            title="Glycemic Goals, Hypoglycemia, and Hyperglycemic Crises",
+            grade="E",
+            year=2026,
+            url="https://doi.org/10.2337/dc26-S006",
+        ),
     ),
     CareGapRule(
         rule_id="HTN_SCREENING",
@@ -60,7 +70,14 @@ RULES: tuple[CareGapRule, ...] = (
                  r"|elevated blood pressure)\w*"),
         gap=("Hypertension mentioned. Confirm blood pressure "
              "screening/monitoring is current."),
-        source=None,  # added in Task 3
+        source=CareGapSource(
+            organization="U.S. Preventive Services Task Force",
+            title="Hypertension in Adults: Screening",
+            grade="A",
+            year=2021,
+            url=("https://www.uspreventiveservicestaskforce.org/uspstf/"
+                 "recommendation/hypertension-in-adults-screening"),
+        ),
     ),
     CareGapRule(
         rule_id="LIPID_SCREENING",
@@ -70,7 +87,19 @@ RULES: tuple[CareGapRule, ...] = (
              "and CVD risk assessment are current. USPSTF recommends a statin "
              "for adults 40-75 who have at least one CVD risk factor and a "
              "calculated 10-year CVD risk of 10% or greater."),
-        source=None,  # added in Task 3
+        # LIPID_SCREENING. Grade B is scoped to adults 40-75 with >=1 CVD risk
+        # factor AND 10-year CVD risk >=10%. At 7.5% to <10% it is grade C, and
+        # at 76+ it is an I statement. The gap text carries the threshold so the
+        # grade is not overclaimed; see LIMITATIONS.
+        source=CareGapSource(
+            organization="U.S. Preventive Services Task Force",
+            title=("Statin Use for the Primary Prevention of Cardiovascular Disease "
+                   "in Adults: Preventive Medication"),
+            grade="B",
+            year=2022,
+            url=("https://www.uspreventiveservicestaskforce.org/uspstf/"
+                 "recommendation/statin-use-in-adults-preventive-medication"),
+        ),
     ),
     CareGapRule(
         rule_id="TOBACCO_CESSATION",
@@ -78,7 +107,21 @@ RULES: tuple[CareGapRule, ...] = (
         gap=("Tobacco or nicotine use mentioned. Cessation counseling and "
              "pharmacotherapy are recommended for adults who smoke; confirm "
              "and offer support."),
-        source=None,  # added in Task 3
+        # TOBACCO_CESSATION. The grade A covers behavioral counselling plus
+        # FDA-approved pharmacotherapy for adults who smoke. USPSTF issued an I
+        # statement for e-cigarettes as a cessation aid in the same 2021
+        # recommendation, so the gap text must not imply grade A applies to a
+        # vaping trigger.
+        source=CareGapSource(
+            organization="U.S. Preventive Services Task Force",
+            title=("Tobacco Smoking Cessation in Adults, Including Pregnant "
+                   "Persons: Interventions"),
+            grade="A",
+            year=2021,
+            url=("https://www.uspreventiveservicestaskforce.org/uspstf/"
+                 "recommendation/tobacco-use-in-adults-and-pregnant-women-"
+                 "counseling-and-interventions"),
+        ),
     ),
 )
 
@@ -90,5 +133,6 @@ def find_gaps(text: str) -> list[dict]:
         m = re.search(rule.pattern, lower)
         if m:
             hits.append({"gap": rule.gap, "rule_id": rule.rule_id,
-                         "evidence": f"matched '{m.group(0)}'"})
+                         "evidence": f"matched '{m.group(0)}'",
+                         "source": rule.source.model_dump()})
     return hits
