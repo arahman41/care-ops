@@ -65,18 +65,45 @@ because it has two consumers: this agent, and P2-4's benchmark, which needs
 it to compute any verified-code metric.
 
 ```python
+REPO_ROOT     = Path(__file__).resolve().parents[1]
+VOCAB_PATH    = REPO_ROOT / "data" / "vocab" / "..."
 VOCAB_VERSION = "ICD-10-CM FY2026"   # recorded in every CodingOutput
-VOCAB_PATH    = Path("data/vocab/...")
 VOCAB_SHA256  = "..."                # sha256 of the DECOMPRESSED content
 
 @lru_cache(maxsize=1)
 def load_codes() -> frozenset[str]: ...
 
 def normalize(code: str) -> str: ...
-def _looks_like_cpt(code: str) -> bool: ...   # private on purpose
+def _looks_like_cpt(code: str) -> bool: ...     # private on purpose
+def _looks_like_hcpcs(code: str) -> bool: ...   # private on purpose
 def classify(system: str, code: str) -> Literal["verified", "not_found", "unchecked"]: ...
 def verified_rate(verified: int, not_found: int) -> float | None: ...
 ```
+
+`VOCAB_PATH` is derived from the module's own location, following
+`governance/heldout.py:30` (`REPO_ROOT = Path(__file__).resolve()
+.parents[1]`). A bare `Path("data/vocab/...")` would be resolved against the
+current working directory, so it would work in tests run from the repo root
+and fail anywhere else, which is the kind of breakage that shows up first in
+a container.
+
+**The Dockerfile needs one `COPY` line, and this task takes that one line
+out of P2-5's scope.** `services/agent_coding/Dockerfile` currently copies
+`requirements.txt`, `shared/`, and `services/agent_coding/`, and neither
+`docker-compose.yml` nor the k8s manifest mounts a volume. Without a change,
+`load_codes` raises on the first request inside every container, so `/run`
+fails always, and the symptom would surface during P2-5 as a readiness-probe
+failure with nothing pointing back here. Add:
+
+```dockerfile
+COPY data/vocab/ data/vocab/
+```
+
+This is deliberately not "containerization work." P2-5 owns image and
+manifest design; shipping a data file that the service cannot start without
+is part of building the service. Leaving it to P2-5 would mean this task
+knowingly delivers an agent that cannot run in the only way it is ever
+deployed.
 
 `classify` is the only public entry point for turning a suggestion into a
 status, and there is deliberately no public `is_valid`. The module has two
@@ -112,18 +139,39 @@ The rule, operating throughout on the **normalized** string:
 2. Otherwise, if the code has CPT shape (five digits, or four digits plus a
    trailing letter for Category II and III) **and** the model declared it
    `CPT`, return `unchecked`.
-3. Otherwise return `not_found`.
+3. Otherwise, if the code has HCPCS Level II shape (a single letter followed
+   by four digits) **and** the model declared it `HCPCS`, return
+   `unchecked`.
+4. Otherwise return `not_found`.
 
-Degenerate input (`""`, `"N/A"`, prose) falls to rule 3 and counts as
+**`system` accepts `"HCPCS"` as a third value, and rule 3 exists because the
+alternative is a biased sample.** `ModelCodeSuggestion.system` is a
+`Literal`, so a model that correctly labels `J1885` as `HCPCS` would fail
+`ModelCodingPayload` validation, which section 3 wraps into `CodingError`
+and section 4 turns into a 502. Those failures would land specifically on
+notes mentioning drugs and supplies, so any verified rate computed over
+successful runs would be measured on a systematically skewed subset. That is
+the same argument section 2 uses to reject a `model_validator` on
+eligibility flags, and it applies here with equal force. Rejecting an honest
+label is worse than accepting it as unverifiable.
+
+No HCPCS vocabulary is vendored, so rule 3 returns `unchecked` rather than
+attempting a lookup. HCPCS Level II is also published by CMS in the public
+domain, so vendoring it later is a natural follow-up that would convert this
+`unchecked` bucket into real verification. It is deliberately not part of
+P2-3.
+
+Degenerate input (`""`, `"N/A"`, prose) falls to rule 4 and counts as
 `not_found`. That is the right default, since a suggestion that does not
 contain a code is a defect rather than something to excuse, but it means
 `not_found` is not purely a count of invented codes.
 
-Rule 2 requires shape and label to agree, so a fabricated ICD-10-shaped code
-cannot buy exemption by claiming to be CPT. The conjunction cuts the other
-way too, and the spec should not pretend otherwise: **a real CPT code that
-the model mislabels as `"ICD-10"` fails the lookup, fails rule 2's label
-test, and is counted `not_found`.** A real code is then scored as a
+Rules 2 and 3 both require shape and label to agree, so a fabricated
+ICD-10-shaped code cannot buy exemption by claiming to be CPT or HCPCS. The
+conjunction cuts the other way too, and the spec should not pretend
+otherwise: **a real CPT or HCPCS code that the model mislabels as
+`"ICD-10"` fails the lookup, fails the label test in rules 2 and 3, and is
+counted `not_found`.** A real code is then scored as a
 hallucination. That direction is conservative, in that it understates the
 model's performance rather than flattering it, which is why the conjunction
 is still the right call. It is a known distortion rather than a hidden one,
@@ -140,20 +188,24 @@ distinct causes:
 2. Real ICD-10-CM codes absent from the **pinned** FY2026 release. Models
    trained on earlier data will emit retired or since-revised codes that
    were valid when written.
-3. Real codes from adjacent CMS vocabularies, most importantly HCPCS
-   Level II (`J1885`, `G0008`). Their letter-plus-four-digits shape fails
-   the ICD-10-CM lookup, fails the all-digit CPT shape test, and lands in
-   rule 3.
+3. Real codes from adjacent CMS vocabularies that the model **mislabels**.
+   An honestly labelled HCPCS Level II code (`J1885`, `G0008`) now reaches
+   `unchecked` via rule 3, but the same code declared `"ICD-10"` fails the
+   lookup and falls to rule 4.
 4. Mislabelled real CPT codes, per the conjunction above, and degenerate
    non-code strings.
 
 Causes 2, 3, and 4 give the metric a **nonzero floor unrelated to
 hallucination.** For a number feeding P2-4 and Phase 3 drift, that floor has
 to be stated rather than discovered when a model looks worse than it is.
-The honest name for what is computed is *the rate of suggested codes not
-present in one pinned CMS ICD-10-CM release*, and section 2a defines it that
-way. Calling it a hallucination rate without qualification would be an
-overclaim.
+
+Stated to match section 2a exactly, in its direction and over its
+denominator: what is computed is *the fraction of **checkable** suggested
+codes that are present in one pinned CMS ICD-10-CM release*, where checkable
+means everything not classified `unchecked`. It is a rate of presence in one
+release, not of clinical correctness, and its complement is not a clean
+hallucination count. Calling it a hallucination rate without qualification
+would be an overclaim.
 
 Section 6 requires eyeballing every `not_found` code from the live runs
 specifically to see which of the four causes dominates in practice. That is
@@ -234,7 +286,7 @@ structural rather than a convention the agent has to remember to enforce.
 
 ```python
 class ModelCodeSuggestion(BaseModel):
-    system: Literal["ICD-10", "CPT"]
+    system: Literal["ICD-10", "CPT", "HCPCS"]
     code: str
     description: str
     eligibility_flag: bool = False
@@ -344,10 +396,16 @@ verified_rate = verified / (verified + not_found)
 
 `unchecked` is excluded from **both** numerator and denominator. The naive
 formula `not_found_count / len(codes)` is wrong, and wrong in a way that is
-easy to miss: because every CPT code is permanently `unchecked`, that ratio
-moves whenever the ICD-10 to CPT mix in a note shifts, which is a property
-of the note rather than of the model. Two models could hallucinate at
-identical rates and score differently.
+easy to miss: `unchecked` codes sit in `len(codes)` while being unverifiable
+by construction, so that ratio moves whenever the mix of checkable and
+uncheckable suggestions in a note shifts, which is a property of the note
+rather than of the model. Two models could hallucinate at identical rates
+and score differently.
+
+Note the precision, since an earlier draft of this section got it wrong:
+`unchecked` is not a synonym for "CPT." Per section 1a, a real CPT code the
+model mislabels as ICD-10 lands in `not_found`, not `unchecked`. The
+exclusion above is defined on the status, never on the declared system.
 
 **Across a run, pool the counts; do not average per-note rates.** P2-4
 computes one rate over the whole held-out set by summing `verified_count`
@@ -380,6 +438,13 @@ four-line function with two tests removes the possibility. P2-4 sums
 `verified_count` and `not_found_count` across the held-out set and calls
 this once. The `float | None` return is what forces the caller to handle the
 undefined case rather than let a silent 0.0 through.
+
+To be explicit for whoever reviews the diff: **`verified_rate` ships with
+zero callers inside the repository.** Its only consumer is P2-4, which does
+not exist yet. That is intentional, not dead code, and it is the same
+tradeoff as `classify` being written to serve a caller that has not been
+built. The alternative is P2-4 re-deriving the rule and diverging silently,
+which is the failure this spec keeps arguing against.
 
 `CodingOutput` exposes both counts as computed fields, so the denominator is
 reconstructible from a stored `agent_decisions` row without re-parsing the
@@ -429,6 +494,10 @@ Then the enrichment step that is specific to this task. The parsed
   agent would put two copies of them in the codebase.
 - Any suggestion with `eligibility_flag=True` and a missing or blank
   `eligibility_reason` has its flag degraded to `False`, per section 2.
+  "Blank" means `None` or empty **after stripping whitespace**, so a reason
+  of `"   "` degrades rather than counting as substantiation.
+- `confidence` carries across from `ModelCodingPayload` unchanged. It is the
+  model's to supply, unlike the two vocabulary fields.
 - `vocabulary_version` is set from `shared.icd10.VOCAB_VERSION`.
 
 Because the model's response was never parsed into a schema carrying these
@@ -436,9 +505,15 @@ fields, this is construction rather than correction. There is no window in
 which a model-supplied `vocabulary_status` exists and has to be remembered
 about.
 
-The `code` string is stored as the model emitted it, trimmed and uppercased,
-so display keeps the conventional dotted form. Only the lookup is
-normalized.
+The stored `code` string keeps the conventional dotted display form. Only
+the lookup is normalized, and the two must not be conflated: `normalize`
+strips the dot, so passing the stored value through it would destroy exactly
+the formatting this preserves. Concretely, the agent stores
+`code.strip().upper()` and passes the same string to `classify`, which does
+its own normalization internally. There is deliberately no shared helper for
+"trim and uppercase but keep the dot," because the only caller is this one
+line and naming it would invite someone to reach for it instead of
+`normalize` at lookup time.
 
 **`TruncatedResponseError` must be caught, and this agent is the one most
 likely to raise it.** `shared/llm.py:131` raises it when `stop_reason ==
@@ -486,9 +561,12 @@ the prompt hash, following the `structuring_eval.py` pattern rather than the
 `facts.py` one.
 
 Sequencing, since the obvious reading is circular: run the section 6 live
-verification at a deliberately generous cap, then pin the value from the
-observed output token counts. Section 6 cannot report usage at a cap that
-section 3 has not chosen yet.
+verification at `max_tokens=4000`, deliberately generous so the observation
+is not itself truncated, then pin the shipped value at **twice the largest
+observed output token count, rounded up to the nearest 500, and never below
+2000.** Section 6 cannot report usage at a cap that section 3 has not chosen
+yet, so the verification cap and the shipped cap are two different numbers
+and both are written down here rather than left to judgment.
 
 **The system prompt is rewritten to match the new payload.** The current
 `_SYSTEM` string advertises the old shape, including `eligibility_flag` with
@@ -590,6 +668,14 @@ Cases specific to this task, which carry the real weight:
 
 - The sha256 of the **decompressed** vocabulary content matches
   `VOCAB_SHA256`, matching the pin defined in section 1.
+- **`load_codes` raises when the content does not match the pin.** Point it
+  at a tampered fixture and assert it refuses to load. The test above only
+  proves the pin was transcribed correctly; it passes just as happily
+  against an implementation whose verification is missing or a no-op. Since
+  section 1 claims this gate is what keeps the vocabulary from changing
+  silently between two P2-4 runs, an unexercised gate is the one thing here
+  that must not be taken on trust. This is the only behaviour in
+  `shared/icd10.py` that a passing suite would otherwise leave unverified.
 - The vendored file is actually tracked by git, not merely present on disk.
   This is cheap (`git ls-files --error-unmatch`) and it is the one failure
   the `.gitignore` rule in section 1 exists to prevent, which would
@@ -615,7 +701,13 @@ Cases specific to this task, which carry the real weight:
 - `normalize` maps `e11.9`, `E11.9`, and `E119` to the same key, and all
   three produce the same `classify` result.
 - A syntactically plausible but nonexistent code is absent.
-- `VOCAB_VERSION` is non-empty and consistent with the vendored filename.
+- `VOCAB_VERSION` is non-empty and `VOCAB_PATH.is_file()`. The looser
+  "consistent with the vendored filename" is not assertable while the
+  filename is deliberately unpinned, so the test checks the two things that
+  are knowable now.
+- `classify` returns `unchecked` for an honestly labelled HCPCS code
+  (`J1885`, `system="HCPCS"`) and `not_found` for the same code declared
+  `"ICD-10"`, pinning both directions of rule 3.
 
 `tests/test_schemas.py`, the repo's existing contract-test file for
 `shared/schemas.py`, gains a direct schema-level test that
@@ -711,7 +803,13 @@ CMS distribution surfaces before any dependent code is written.
 - No billable-versus-header code distinction. The CMS order file carries
   that flag and could refine validation later.
 - No retry loop, per the reasoning in section 3.
-- No Dockerfile or Kubernetes manifest changes; P2-5 covers containerization.
+- No Kubernetes manifest changes, and no Dockerfile changes **beyond the
+  single `COPY data/vocab/` line** carved out in section 1. P2-5 still owns
+  image and manifest design; this task owns shipping the data file its own
+  service cannot start without.
+- No HCPCS Level II vocabulary. Rule 3 returns `unchecked` for honestly
+  labelled HCPCS codes rather than verifying them. The CMS HCPCS release is
+  public domain, so vendoring it is a natural follow-up.
 - No counter for degraded eligibility flags, per the reasoning in section 2.
 - **No fix to the identical `TruncatedResponseError` hole in
   `services/agent_prior_auth/agent.py`.** It is inherited from P2-1, not
@@ -742,7 +840,9 @@ CMS distribution surfaces before any dependent code is written.
 
 - `docs/TECH-DESIGN.md` line 114 shows the old `CodingOutput` JSON shape and
   must be updated to include `vocabulary_status`, `eligibility_reason`,
-  `vocabulary_version`, `verified_count`, and `not_found_count`.
+  `vocabulary_version`, `verified_count`, and `not_found_count`, and to
+  record that `system` now accepts `"HCPCS"` alongside `"ICD-10"` and
+  `"CPT"`.
 - `.gitignore` needs the `data/vocab/` exception from section 1. This is a
   functional change, not documentation, and without it the vendored
   vocabulary is silently never committed.
