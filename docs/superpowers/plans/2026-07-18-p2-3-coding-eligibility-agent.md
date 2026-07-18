@@ -46,130 +46,82 @@ artifacts is the least predictable part of the task, and every later chunk
 depends on a confirmed hash. If the published files differ from what the
 spec assumes, that surfaces here rather than after the agent is written.
 
-### Task 1: Acquire, verify, and pin the two CMS artifacts
+### Task 1: Acquire, verify, and pin the two CMS artifacts (DONE 2026-07-18)
 
-**This task needs network access and human judgment. It is not fully
-automatable.** If you are an agent without network access, stop and hand
-this task back rather than inventing a checksum or a filename.
+**Completed in commit `7644389`.** Left here as the record of what was done
+and what to repeat on a vocabulary bump. Full detail lives in
+`data/vocab/PROVENANCE.md`.
 
-**Files:**
-- Create: `data/vocab/icd10cm_codes_<FY>.txt.gz`
-- Create: `data/vocab/hcpcs_level2_<YEAR>.txt.gz`
-- Create: `data/vocab/PROVENANCE.md`
+The original plan flagged this task as needing a human because it needs
+network access. That turned out to be half right: the CMS **HTML pages**
+return 403 to automated fetchers, but the **direct file URLs** return 200,
+so the whole task was automatable after all. A failed page fetch is not
+evidence that a file URL is wrong.
 
-- [ ] **Step 1: Download the ICD-10-CM code descriptions file from CMS**
+- [x] **ICD-10-CM**, FY2026 April 1 2026 update, 74,719 codes
+      `https://www.cms.gov/files/zip/april-1-2026-code-descriptions-tabular-order.zip`
+      member `Code Descriptions/icd10cm_codes_2026.txt`, UTF-8,
+      whitespace-delimited, code first, dotless.
+      **The same zip ships `icd10cm_order_2026.txt`, which is the wrong
+      file**: its lines lead with a five-digit sequence number
+      (`00001 A00   0 Cholera ...`), so a first-token parse would have
+      loaded 74,000 sequence numbers as codes with the sha256 pin none the
+      wiser. The plan predicted this trap and it is real.
 
-Get the current fiscal year "Code Descriptions" file from the CMS ICD-10-CM
-release page. The flat two-column form (code, then description) is what this
-plan assumes.
+- [x] **HCPCS Level II**, July 2026 quarterly, 8,725 codes
+      `https://www.cms.gov/files/zip/july-2026-alpha-numeric-hcpcs-file.zip`
+      member `HCPC2026_JUL_ANWEB_06172026.txt`, UTF-8, **fixed width**:
+      code at `[0:5]` of 293-character records, mixed with shorter
+      two-character modifier records (`A1`, `JK`, `E4`) that are filtered
+      out by requiring `^[A-Z]\d{4}$`.
 
-- [ ] **Step 2: Download the HCPCS Level II file from CMS**
+- [x] **Level II acceptance condition verified, not assumed.** The extracted
+      set contains zero five-digit numeric codes, and `99213` and `0001T`
+      are both absent. No Level I / CPT leaked in, so the `unchecked` bucket
+      survives.
 
-**Acceptance condition, per spec section 1: the artifact must contain Level
-II only.** "HCPCS" formally includes Level I, which *is* CPT. If the
-distribution bundles both levels, filter to Level II now and record the
-filter in `PROVENANCE.md`. Shipping Level I entries would make `classify`
-verify CPT codes by lookup, which dissolves the `unchecked` bucket and moves
-the metric with no test failing.
+- [x] **Codes only, no descriptions.** `classify` needs membership and
+      nothing else; descriptions would have cost roughly 2.5 MB for no
+      current consumer. Total vendored size is **196 KB**, well under the
+      spec's 5 MB ceiling. (The spec's "1 to 2 MB" estimate assumed
+      descriptions were included.)
 
-- [ ] **Step 3: Check the format assumptions before writing any parser**
+- [x] **Pins, over decompressed content:**
 
-Confirm for each file: it is flat and delimited (not XLSX, not a nested
-ZIP), codes are stored without decimal points, there is one code per line,
-and the text encoding is UTF-8. If a file is XLSX or nested, convert it once
-here, vendor the flat result, and record the exact conversion command in
-`PROVENANCE.md`. Do not add an office-format reader or an unzip step to the
-runtime path.
-
-**Take the `codes` file, not the `order` file.** CMS publishes both
-`icd10cm_codes_*.txt` (code, then description) and `icd10cm_order_*.txt`,
-which leads each line with a five-digit sequence number. The Task 3 parser
-takes the first whitespace-delimited token as the code, so an order file
-would silently load 74,000 sequence numbers as codes. The sha256 pin would
-not catch it, because the pin covers whatever was downloaded. Only
-`test_known_real_codes_are_present` would fail, and it would look like a
-vocabulary problem rather than a wrong-file problem.
-
-CMS flat files are sometimes Windows-1252 rather than UTF-8. That fails
-loudly at decode time rather than silently, but check it here so the parser
-does not need a guess.
-
-- [ ] **Step 4: Check the size ceiling**
-
-Run: `du -ch data/vocab/*.gz | tail -1`
-Expected: roughly 1 to 2 MB total. **If the total exceeds 5 MB compressed,
-stop and raise it with the user** rather than committing, per the spec's
-stated bound.
-
-- [ ] **Step 5: Compute the two pins, over DECOMPRESSED content**
-
-```bash
-python - <<'PY'
-import gzip, hashlib, pathlib
-for p in sorted(pathlib.Path("data/vocab").glob("*.gz")):
-    data = gzip.decompress(p.read_bytes())
-    print(p.name, hashlib.sha256(data).hexdigest(), f"{len(data)} bytes")
-PY
+```
+icd10cm_codes_2026.txt.gz     2a65a372ee0660fb812e2491a6a5d54212fcaccecf1cd508964c79a7744cf587
+hcpcs_level2_2026q3.txt.gz    d841e172cb20b718528eef465a8d19f36621570ae068fdaef983969dd810e9e2
 ```
 
-Hash the decompressed bytes, never the gzip bytes. gzip output is not
-byte-stable across tools (the header carries an mtime and an OS byte), so a
-harmless re-compression would break the gate with the code list unchanged.
+- [x] **`data/vocab/PROVENANCE.md` written**, including the exact
+      reproduction script.
 
-- [ ] **Step 6: Write `data/vocab/PROVENANCE.md`**
-
-Record for each file: source URL, download date, the release identifier
-(fiscal year or quarter), the decompressed sha256, any conversion or
-filtering command applied, and an explicit note that the HCPCS file is Level
-II only. This is what makes the vendored artifact reproducible from the CMS
-original.
-
-- [ ] **Step 7: Commit (this will fail until Task 2; that is expected)**
-
-Do not force the commit. Task 2 fixes `.gitignore` first.
+**Consequence for Task 3, and it is a simplification.** Because the
+fixed-width parse happened once here at vendoring time, both vendored files
+are now plain one-code-per-line text. The loader does **not** need two
+parsers. This is what the spec meant by "convert once during
+implementation, vendor the resulting flat delimited file, and record the
+provenance."
 
 ---
 
-### Task 2: Add the `.gitignore` exception
+### Task 2: Add the `.gitignore` exception (DONE 2026-07-18)
 
-Without this the vendored files silently never get committed, the loaders
-raise in CI, and the natural "fix" is to download at build time, which
-reintroduces the non-determinism the vendoring exists to prevent.
-
-**Files:**
-- Modify: `.gitignore` (append after line 18)
-
-- [ ] **Step 1: Confirm the files are currently ignored**
-
-Run: `git check-ignore -v data/vocab/*.gz`
-Expected: each path reported as ignored by the `data/*` rule on line 17.
-
-- [ ] **Step 2: Append the exception AFTER line 18**
+**Completed in the same commit.** `.gitignore` gained, after the existing
+`!data/.gitkeep` line:
 
 ```gitignore
-# Public-domain reference vocabularies, not clinical data (see P2-3 spec)
+# Public-domain CMS reference vocabularies, not clinical data (see P2-3 spec).
+# The directory must be re-included first: data/* excludes data/vocab itself,
+# and git will not descend into an excluded directory, so a negation naming a
+# file inside it cannot re-include the file.
 !data/vocab/
 !data/vocab/**
 ```
 
-**Order matters and is not cosmetic.** Negations placed above the `data/*`
-line are overridden by it and the files stay ignored, failing exactly as
-silently as having no rule at all. `!data/vocab/` is the line that does the
-work, because `data/*` excludes the directory itself and git will not
-descend into an excluded directory. `!data/vocab/**` is belt and braces.
-
-- [ ] **Step 3: Verify the exception works and clinical data is still ignored**
-
-Run: `git check-ignore -v data/vocab/*.gz ; git status --short data/`
-Expected: the `.gz` files now appear as untracked, and nothing under
-`data/aci-bench/`, `data/primock57/`, or `data/splits/` appears.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add .gitignore data/vocab/
-git commit -m "feat(P2-3): vendor CMS ICD-10-CM and HCPCS Level II vocabularies"
-```
+- [x] Verified the two `.gz` files are now tracked.
+- [x] Verified `data/aci-bench`, `data/primock57`, and `data/splits` are all
+      still ignored. The exception is narrow to `data/vocab/`.
 
 ---
 
@@ -215,7 +167,7 @@ def test_loader_raises_on_tampered_content(tmp_path, monkeypatch):
     catch. Without the clear afterwards it poisons every later test.
     """
     bad = tmp_path / "tampered.txt.gz"
-    bad.write_bytes(gzip.compress(b"E119\tNot the real file\n"))
+    bad.write_bytes(gzip.compress(b"E119\n"))
 
     vocab.load_icd10.cache_clear()
     monkeypatch.setattr(vocab, "ICD10_PATH", bad)
@@ -224,6 +176,23 @@ def test_loader_raises_on_tampered_content(tmp_path, monkeypatch):
             vocab.load_icd10()
     finally:
         vocab.load_icd10.cache_clear()
+
+
+def test_hcpcs_loader_raises_on_tampered_content(tmp_path, monkeypatch):
+    """Both loaders need this, not just one. A copy-paste bug such as
+    _load(HCPCS_PATH, ICD10_SHA256) or reusing ICD10_PATH would otherwise
+    ship undetected: the sha256 pin tests read the files directly rather
+    than through the loaders, so they would still pass."""
+    bad = tmp_path / "tampered.txt.gz"
+    bad.write_bytes(gzip.compress(b"J1885\n"))
+
+    vocab.load_hcpcs.cache_clear()
+    monkeypatch.setattr(vocab, "HCPCS_PATH", bad)
+    try:
+        with pytest.raises(ValueError, match="sha256"):
+            vocab.load_hcpcs()
+    finally:
+        vocab.load_hcpcs.cache_clear()
 
 
 def test_vendored_files_are_tracked_by_git():
@@ -256,27 +225,15 @@ def test_known_real_codes_are_present():
     assert vocab.normalize("G0008") in hcpcs
 
 
-def test_hcpcs_loader_raises_on_tampered_content(tmp_path, monkeypatch):
-    """Both loaders need this, not just one. A copy-paste bug such as
-    _load(HCPCS_PATH, ICD10_SHA256) or reusing ICD10_PATH would otherwise
-    ship undetected: the sha256 pin tests read the files directly rather
-    than through the loaders, so they would still pass."""
-    bad = tmp_path / "tampered.txt.gz"
-    bad.write_bytes(gzip.compress(b"J1885\tNot the real file\n"))
-
-    vocab.load_hcpcs.cache_clear()
-    monkeypatch.setattr(vocab, "HCPCS_PATH", bad)
-    try:
-        with pytest.raises(ValueError, match="sha256"):
-            vocab.load_hcpcs()
-    finally:
-        vocab.load_hcpcs.cache_clear()
+def test_cpt_codes_are_in_neither_set():
+    """If a CPT code ever appears here, the HCPCS artifact picked up Level I
+    and the unchecked bucket has quietly dissolved. See PROVENANCE.md."""
+    both = vocab.load_icd10() | vocab.load_hcpcs()
+    assert "99213" not in both
+    assert "0001T" not in both
 
 
 def test_constants_are_filled_in_not_placeholders():
-    """shared/vocab.py ships with literal <placeholder> markers that Task 1
-    replaces. A leftover marker would otherwise reach a stored
-    CodingOutput and silently destroy traceability."""
     assert vocab.VOCAB_VERSION
     assert "<" not in vocab.VOCAB_VERSION
     assert "<" not in vocab.ICD10_SHA256
@@ -285,20 +242,12 @@ def test_constants_are_filled_in_not_placeholders():
     assert vocab.HCPCS_PATH.is_file()
 
 
-def test_vocabulary_sizes_are_plausible():
-    """Guards a parser that absorbs wrapped description lines as codes.
-    A description continuing onto a second line would put its first token
-    into the set, and a false member could mark a fabricated code
-    verified. Loose bounds; this is a smoke test, not a pin."""
-    assert 50_000 < len(vocab.load_icd10()) < 100_000
-    assert 1_000 < len(vocab.load_hcpcs()) < 30_000
+def test_vocabulary_sizes_match_the_vendored_artifacts():
+    """Exact, because the artifacts are pinned. A change here means the
+    vocabulary moved and VOCAB_VERSION and the pins must move with it."""
+    assert len(vocab.load_icd10()) == 74_719
+    assert len(vocab.load_hcpcs()) == 8_725
 ```
-
-**Every hard-coded code above must be confirmed against the pinned releases
-before you rely on it.** `M99` is a populated ICD-10-CM category, so a
-plausible-looking fabrication can turn out to be real, and a test asserting
-absence on a genuine code would pin the wrong behaviour while looking
-correct.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -307,12 +256,7 @@ Expected: FAIL, `ModuleNotFoundError: No module named 'shared.vocab'`
 
 - [ ] **Step 3: Write `shared/vocab.py`**
 
-**Substitute the four placeholders as you paste this**: the two filenames,
-the two sha256 pins, and `VOCAB_VERSION`, all from the `PROVENANCE.md` you
-wrote in Task 1 Step 6. Pasted literally, the `<...>` markers make seven
-tests fail. `test_constants_are_filled_in_not_placeholders` exists so that
-failure is obvious rather than mysterious, but doing the substitution now
-avoids it entirely.
+The constants below are the real ones from Task 1. No substitution needed.
 
 ```python
 """Vendored CMS code vocabularies and the one place codes are classified.
@@ -325,6 +269,11 @@ diverge silently and a scoring difference gets read as a model difference.
 
 ICD-10-CM and HCPCS Level II are public domain and vendored. CPT is licensed
 and is not, which is the only reason any code ends up "unchecked".
+
+The vendored files are one code per line. The CMS originals are not: the
+ICD-10 source is whitespace-delimited with descriptions, and the HCPCS
+source is fixed width. Both were converted once at vendoring time, and
+data/vocab/PROVENANCE.md carries the reproduction script.
 """
 from __future__ import annotations
 
@@ -338,17 +287,16 @@ from typing import Literal
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VOCAB_DIR = REPO_ROOT / "data" / "vocab"
 
-# Filled in by Task 1 from the actual vendored artifacts.
-ICD10_PATH = VOCAB_DIR / "icd10cm_codes_<FY>.txt.gz"
-ICD10_SHA256 = "<pin from Task 1 step 5>"
-HCPCS_PATH = VOCAB_DIR / "hcpcs_level2_<YEAR>.txt.gz"
-HCPCS_SHA256 = "<pin from Task 1 step 5>"
+ICD10_PATH = VOCAB_DIR / "icd10cm_codes_2026.txt.gz"
+ICD10_SHA256 = "2a65a372ee0660fb812e2491a6a5d54212fcaccecf1cd508964c79a7744cf587"
+HCPCS_PATH = VOCAB_DIR / "hcpcs_level2_2026q3.txt.gz"
+HCPCS_SHA256 = "d841e172cb20b718528eef465a8d19f36621570ae068fdaef983969dd810e9e2"
 
 # Names BOTH releases; recorded on every CodingOutput so a stored result is
 # traceable to the exact pair that produced it. Bump this on ANY change to
 # either pin. That is an obligation on this repo, not a property of the
 # releases: ICD-10-CM moves annually, HCPCS Level II quarterly.
-VOCAB_VERSION = "<from PROVENANCE.md>"
+VOCAB_VERSION = "ICD-10-CM FY2026 (2026-04-01) + HCPCS Level II 2026Q3"
 
 VocabularyStatus = Literal["verified", "not_found", "unchecked"]
 
@@ -356,7 +304,7 @@ VocabularyStatus = Literal["verified", "not_found", "unchecked"]
 # for Category II and III. Both lead with a digit, which is what makes this
 # disjoint from ICD-10-CM and HCPCS Level II: those always lead with a
 # letter. That disjointness is why a shape test is safe here and was not
-# safe for HCPCS.
+# safe for HCPCS, where 6,761 real ICD-10-CM codes share the shape.
 _CPT_RE = re.compile(r"^\d{5}$|^\d{4}[A-Z]$")
 
 
@@ -381,13 +329,10 @@ def _load(path: Path, expected_sha256: str) -> frozenset[str]:
             f"got {actual}. The vocabulary changed without the pin being "
             f"updated, which would silently move any metric computed on it."
         )
-    codes = set()
-    for line in raw.decode("utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        codes.add(normalize(line.split(None, 1)[0]))
-    return frozenset(codes)
+    return frozenset(
+        normalize(line) for line in raw.decode("utf-8").splitlines()
+        if line.strip()
+    )
 
 
 @lru_cache(maxsize=1)
@@ -408,9 +353,10 @@ def _looks_like_cpt(code: str) -> bool:
 ```
 
 Note there is deliberately no `_looks_like_hcpcs`. HCPCS Level II is a
-letter plus four digits, and so are normalized ICD-10-CM codes (`M54.16`
-becomes `M5416`). They are not separable by shape, which is why the real
-HCPCS release is vendored instead of guessed at.
+letter plus four digits, and so are 6,761 of the 74,719 vendored ICD-10-CM
+codes (`M54.16` becomes `M5416`). They are not separable by shape, which is
+why the real HCPCS release is vendored instead of guessed at. That count is
+measured, not estimated; see `data/vocab/PROVENANCE.md`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
