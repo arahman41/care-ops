@@ -3,7 +3,7 @@ import pytest
 from pydantic import ValidationError
 
 from shared.schemas import (SoapNote, PriorAuthOutput, CareGapOutput,
-                            CodeSuggestion)
+                            CareGapSource, CodeSuggestion)
 
 
 def test_soap_note_requires_all_sections():
@@ -24,3 +24,14 @@ def test_care_gap_defaults_agent_name():
 def test_code_suggestion_system_is_constrained():
     with pytest.raises(ValidationError):
         CodeSuggestion(system="LOINC", code="x", description="y")
+
+
+def test_care_gap_source_requires_core_citation_fields():
+    with pytest.raises(ValidationError):
+        CareGapSource(organization="USPSTF", title="x", year=2021)  # no url
+
+
+def test_care_gap_source_grade_is_optional():
+    src = CareGapSource(organization="USPSTF", title="x", year=2021,
+                        url="https://example.org")
+    assert src.grade is None

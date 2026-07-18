@@ -9,6 +9,12 @@ from services.agent_care_gap.rules import find_gaps
 
 app = FastAPI(title="Care Ops Copilot - Care Gap Agent")
 
+# A fired rule is a deterministic keyword match, not a calibrated probability.
+# The same value is used whether or not a rule fired: a keyword scan cannot be
+# certain a note contains no care gaps, so a 1.0 for the empty case would
+# overclaim.
+RULE_MATCH_CONFIDENCE = 0.9
+
 
 @app.get("/health")
 def health():
@@ -21,8 +27,7 @@ def run_endpoint(inp: AgentInput):
     blob = " ".join([inp.soap.subjective, inp.soap.objective,
                      inp.soap.assessment, inp.soap.plan])
     gaps = [CareGapItem(**g) for g in find_gaps(blob)]
-    # Rules are deterministic, so confidence is fixed high when a rule fires.
-    confidence = 0.9 if gaps else 1.0
+    confidence = RULE_MATCH_CONFIDENCE
     out = CareGapOutput(gaps=gaps, confidence=confidence)
     latency_ms = int((time.perf_counter() - started) * 1000)
     log_decision(
