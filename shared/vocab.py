@@ -121,3 +121,25 @@ def classify(system: str, code: str) -> VocabularyStatus:
     if system == "CPT" and _looks_like_cpt(key):
         return "unchecked"
     return "not_found"
+
+
+def verified_rate(verified: int, not_found: int) -> float | None:
+    """Pooled verified rate. None (never 0.0) on an empty denominator.
+
+    P2-4 sums verified_count and not_found_count across the held-out set and
+    calls this ONCE. Averaging per-note rates is a different and worse
+    number: it weights a note with one checkable code the same as a note
+    with twelve, and it is undefined on the notes that need it least.
+
+    "unchecked" is excluded from both sides, so this is the fraction of
+    CHECKABLE codes present in the pinned releases. It is not a clean
+    hallucination rate; see the P2-3 spec section 1a for the floor.
+
+    Ships with no in-repo caller by design. Its consumer is P2-4, and the
+    alternative is P2-4 re-deriving the rule and diverging silently, which
+    would surface as a scoring difference rather than an error.
+    """
+    denominator = verified + not_found
+    if denominator == 0:
+        return None
+    return verified / denominator

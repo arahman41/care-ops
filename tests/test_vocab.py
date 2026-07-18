@@ -175,3 +175,31 @@ def test_classify_is_normalization_insensitive():
             == vocab.classify("ICD-10", "E11.9")
             == vocab.classify("ICD-10", "E119")
             == "verified")
+
+
+def test_verified_rate_pools_counts():
+    assert vocab.verified_rate(9, 1) == 0.9
+
+
+def test_verified_rate_is_none_not_zero_on_empty_denominator():
+    """0.0 would report a perfect score for a run where nothing was
+    checkable, which is the most misleading possible reading."""
+    assert vocab.verified_rate(0, 0) is None
+
+
+def test_pooled_rate_differs_from_mean_of_per_note_rates():
+    """Documents the pooling rule from spec section 2a with a worked case.
+
+    Note A: 1 verified, 0 not_found -> 1.0
+    Note B: 1 verified, 3 not_found -> 0.25
+    Mean of per-note rates = 0.625; pooled = 2/5 = 0.4.
+
+    Honest about what this is: the counts are pre-summed before the call,
+    so this documents the rule rather than testing that a caller pools.
+    Nothing in this repo pools yet; P2-4 is the caller. The value is that
+    the intended number is written down executably.
+    """
+    pooled = vocab.verified_rate(1 + 1, 0 + 3)
+    mean_of_rates = (1.0 + 0.25) / 2
+    assert pooled == 0.4
+    assert pooled != mean_of_rates
