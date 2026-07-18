@@ -262,8 +262,7 @@ def test_hcpcs_loader_raises_on_tampered_content(tmp_path, monkeypatch):
     ship undetected: the sha256 pin tests read the files directly rather
     than through the loaders, so they would still pass."""
     bad = tmp_path / "tampered.txt.gz"
-    bad.write_bytes(gzip.compress(b"J1885	Not the real file
-"))
+    bad.write_bytes(gzip.compress(b"J1885\tNot the real file\n"))
 
     vocab.load_hcpcs.cache_clear()
     monkeypatch.setattr(vocab, "HCPCS_PATH", bad)
@@ -307,6 +306,13 @@ Run: `pytest tests/test_vocab.py -v`
 Expected: FAIL, `ModuleNotFoundError: No module named 'shared.vocab'`
 
 - [ ] **Step 3: Write `shared/vocab.py`**
+
+**Substitute the four placeholders as you paste this**: the two filenames,
+the two sha256 pins, and `VOCAB_VERSION`, all from the `PROVENANCE.md` you
+wrote in Task 1 Step 6. Pasted literally, the `<...>` markers make seven
+tests fail. `test_constants_are_filled_in_not_placeholders` exists so that
+failure is obvious rather than mysterious, but doing the substitution now
+avoids it entirely.
 
 ```python
 """Vendored CMS code vocabularies and the one place codes are classified.
@@ -1177,6 +1183,7 @@ Inside the existing loop, between the `code = ...` line and the
             # bias any rate computed over successful runs, while looking
             # from the outside like an ordinary parse failure.
             flag = False
+            reason = None   # do not leave a blank reason on a cleared flag
 ```
 
 Then change the `codes.append(...)` call to pass `eligibility_flag=flag`
@@ -1252,7 +1259,6 @@ git commit -m "feat(P2-3): system prompt matches the model payload schema"
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-import pytest
 from fastapi.testclient import TestClient
 from services.agent_coding import app as coding_app
 from services.agent_coding.agent import CodingError
@@ -1271,7 +1277,16 @@ def test_run_happy_path(monkeypatch):
     from shared.schemas import CodingOutput
     monkeypatch.setattr(coding_app, "run", lambda inp: CodingOutput(
         codes=[], confidence=0.5, vocabulary_version="v"))
-    assert client.post("/run", json=BODY).status_code == 200
+    resp = client.post("/run", json=BODY)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["agent_name"] == "coding"
+    assert body["codes"] == []
+    assert body["vocabulary_version"] == "v"
+    # Computed fields must survive FastAPI's response_model serialization,
+    # or the registry and P2-4 lose the counts.
+    assert body["verified_count"] == 0
+    assert body["not_found_count"] == 0
 
 
 def test_run_returns_502_on_coding_error(monkeypatch):
@@ -1369,7 +1384,10 @@ git commit -m "fix(P2-3): ship vendored vocabularies into the coding image"
 **Files:**
 - Modify: `docs/TECH-DESIGN.md:114`
 
-- [ ] **Step 1: Replace the stale `CodingOutput` JSON shape at line 114**
+- [ ] **Step 1: Replace the stale `CodingOutput` JSON block at lines 113-115**
+
+Line 114 is only the middle line; the block body is 113 to 115, with the
+code fences on 112 and 116.
 
 ```json
 {
@@ -1480,15 +1498,24 @@ simple = SoapNote(
     plan="Routine follow-up in 12 months.",
 )
 
-for label, soap in [("RICH", rich), ("SIMPLE", simple)]:
-    encounter_id = insert_encounter(None, "transcript")
-    note_id = insert_note(encounter_id, soap.model_dump(),
-                          "manual-verification", "xhigh")
-    inp = AgentInput(encounter_id=encounter_id, note_id=note_id, soap=soap)
-    print(f"=== {label} ===")
-    print(coding_agent.run(inp).model_dump_json(indent=2))
-
-print(f"=== OUTPUT TOKENS: {observed}, max={max(observed)} ===")
+try:
+    for label, soap in [("RICH", rich), ("SIMPLE", simple)]:
+        encounter_id = insert_encounter(None, "transcript")
+        note_id = insert_note(encounter_id, soap.model_dump(),
+                              "manual-verification", "xhigh")
+        inp = AgentInput(encounter_id=encounter_id, note_id=note_id,
+                         soap=soap)
+        print(f"=== {label} ===")
+        try:
+            print(coding_agent.run(inp).model_dump_json(indent=2))
+        except Exception as exc:            # noqa: BLE001
+            print(f"FAILED: {type(exc).__name__}: {exc}")
+finally:
+    # In a finally block so a failing note does not cost the observation
+    # that Step 5 pins max_tokens from.
+    print(f"=== OUTPUT TOKENS: {observed} ===")
+    if observed:
+        print(f"=== MAX OBSERVED: {max(observed)} ===")
 EOF
 ```
 
