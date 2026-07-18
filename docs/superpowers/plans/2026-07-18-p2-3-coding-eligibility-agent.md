@@ -75,10 +75,24 @@ the metric with no test failing.
 - [ ] **Step 3: Check the format assumptions before writing any parser**
 
 Confirm for each file: it is flat and delimited (not XLSX, not a nested
-ZIP), codes are stored without decimal points, and there is one code per
-line. If a file is XLSX or nested, convert it once here, vendor the flat
-result, and record the exact conversion command in `PROVENANCE.md`. Do not
-add an office-format reader or an unzip step to the runtime path.
+ZIP), codes are stored without decimal points, there is one code per line,
+and the text encoding is UTF-8. If a file is XLSX or nested, convert it once
+here, vendor the flat result, and record the exact conversion command in
+`PROVENANCE.md`. Do not add an office-format reader or an unzip step to the
+runtime path.
+
+**Take the `codes` file, not the `order` file.** CMS publishes both
+`icd10cm_codes_*.txt` (code, then description) and `icd10cm_order_*.txt`,
+which leads each line with a five-digit sequence number. The Task 3 parser
+takes the first whitespace-delimited token as the code, so an order file
+would silently load 74,000 sequence numbers as codes. The sha256 pin would
+not catch it, because the pin covers whatever was downloaded. Only
+`test_known_real_codes_are_present` would fail, and it would look like a
+vocabulary problem rather than a wrong-file problem.
+
+CMS flat files are sometimes Windows-1252 rather than UTF-8. That fails
+loudly at decode time rather than silently, but check it here so the parser
+does not need a guess.
 
 - [ ] **Step 4: Check the size ceiling**
 
@@ -222,10 +236,14 @@ def test_vendored_files_are_tracked_by_git():
     if not (vocab.REPO_ROOT / ".git").exists():
         pytest.skip("not a git checkout")
     for path in (vocab.ICD10_PATH, vocab.HCPCS_PATH):
-        subprocess.run(
+        result = subprocess.run(
             ["git", "ls-files", "--error-unmatch", str(path)],
-            cwd=vocab.REPO_ROOT, check=True,
+            cwd=vocab.REPO_ROOT,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        assert result.returncode == 0, (
+            f"{path.name} is not tracked by git. The .gitignore exception "
+            f"in Task 2 is missing or placed above the data/* line."
         )
 
 
@@ -236,6 +254,45 @@ def test_known_real_codes_are_present():
     hcpcs = vocab.load_hcpcs()
     assert vocab.normalize("J1885") in hcpcs
     assert vocab.normalize("G0008") in hcpcs
+
+
+def test_hcpcs_loader_raises_on_tampered_content(tmp_path, monkeypatch):
+    """Both loaders need this, not just one. A copy-paste bug such as
+    _load(HCPCS_PATH, ICD10_SHA256) or reusing ICD10_PATH would otherwise
+    ship undetected: the sha256 pin tests read the files directly rather
+    than through the loaders, so they would still pass."""
+    bad = tmp_path / "tampered.txt.gz"
+    bad.write_bytes(gzip.compress(b"J1885	Not the real file
+"))
+
+    vocab.load_hcpcs.cache_clear()
+    monkeypatch.setattr(vocab, "HCPCS_PATH", bad)
+    try:
+        with pytest.raises(ValueError, match="sha256"):
+            vocab.load_hcpcs()
+    finally:
+        vocab.load_hcpcs.cache_clear()
+
+
+def test_constants_are_filled_in_not_placeholders():
+    """shared/vocab.py ships with literal <placeholder> markers that Task 1
+    replaces. A leftover marker would otherwise reach a stored
+    CodingOutput and silently destroy traceability."""
+    assert vocab.VOCAB_VERSION
+    assert "<" not in vocab.VOCAB_VERSION
+    assert "<" not in vocab.ICD10_SHA256
+    assert "<" not in vocab.HCPCS_SHA256
+    assert vocab.ICD10_PATH.is_file()
+    assert vocab.HCPCS_PATH.is_file()
+
+
+def test_vocabulary_sizes_are_plausible():
+    """Guards a parser that absorbs wrapped description lines as codes.
+    A description continuing onto a second line would put its first token
+    into the set, and a false member could mark a fabricated code
+    verified. Loose bounds; this is a smoke test, not a pin."""
+    assert 50_000 < len(vocab.load_icd10()) < 100_000
+    assert 1_000 < len(vocab.load_hcpcs()) < 30_000
 ```
 
 **Every hard-coded code above must be confirmed against the pinned releases
@@ -504,11 +561,16 @@ def test_verified_rate_is_none_not_zero_on_empty_denominator():
 
 
 def test_pooled_rate_differs_from_mean_of_per_note_rates():
-    """Pins the pooling rule from spec section 2a as behaviour, not prose.
+    """Documents the pooling rule from spec section 2a with a worked case.
 
     Note A: 1 verified, 0 not_found -> 1.0
     Note B: 1 verified, 3 not_found -> 0.25
     Mean of per-note rates = 0.625; pooled = 2/5 = 0.4.
+
+    Honest about what this is: the counts are pre-summed before the call,
+    so this documents the rule rather than testing that a caller pools.
+    Nothing in this repo pools yet; P2-4 is the caller. The value is that
+    the intended number is written down executably.
     """
     pooled = vocab.verified_rate(1 + 1, 0 + 3)
     mean_of_rates = (1.0 + 0.25) / 2
@@ -566,9 +628,13 @@ git commit -m "feat(P2-3): pooled verified-rate helper for P2-4"
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `tests/test_schemas.py`:
+Add to `tests/test_schemas.py`. **Merge the new names into the existing
+`shared.schemas` import at lines 5 to 6 rather than adding a second import
+statement**; `CodeSuggestion` is already imported there, and a duplicate is
+F811, which `ruff check .` fails in CI.
 
 ```python
+# extend the EXISTING import, do not add a new one
 from shared.schemas import (
     CodeSuggestion, CodingOutput, ModelCodeSuggestion, ModelCodingPayload,
 )
@@ -644,15 +710,19 @@ class ModelCodeSuggestion(BaseModel):
     vocabulary_status="verified" on a fabricated code has the key silently
     dropped by pydantic's extra="ignore" default. The model cannot certify
     its own hallucinations because it has no channel to make the claim.
+
+    eligibility_flag means: this code is commonly subject to payer coverage
+    or medical-necessity review, OR the note's documentation may not
+    support it. Both are assessable from a note alone. Whether a specific
+    patient's plan covers a service is NOT assessable here, and this agent,
+    which receives no payer, plan, or benefits data, does not claim to
+    answer it. When the flag is true, eligibility_reason is required; the
+    agent degrades an unsubstantiated flag rather than rejecting the whole
+    payload (see services/agent_coding/agent.py::_enrich).
     """
     system: Literal["ICD-10", "CPT", "HCPCS"]
     code: str
     description: str
-    # True when this code is commonly subject to payer coverage or
-    # medical-necessity review, OR the note's documentation may not support
-    # it. Both are assessable from a note alone. Whether a specific
-    # patient's plan covers a service is NOT, and this agent, which sees no
-    # payer data, does not claim to answer it.
     eligibility_flag: bool = False
     eligibility_reason: str | None = None
 
@@ -713,10 +783,16 @@ git commit -m "feat(P2-3): split coding schema so the model cannot set vocabular
 
 ## Chunk 3: Agent and endpoint
 
-### Task 7: `CodingError` and the three parsing guards
+### Task 7: `CodingError`, the parsing guards, and enrichment
 
 Adopt the P2-1 structure rather than re-deriving it. The P2-1 spec (lines
 130 to 133) explicitly deferred this here.
+
+Parsing and enrichment land in one task on purpose. `run()` returns
+`_enrich(payload)`, so a stubbed `_enrich` would leave this task's own
+happy-path test failing and break the "every commit is green" property.
+Everything `_enrich` needs (`classify` from Task 4, the schemas from Task 6)
+already exists by now.
 
 **Files:**
 - Modify: `services/agent_coding/agent.py`
@@ -731,8 +807,12 @@ shared.llm.call has NO effect on the already-bound reference, so every
 monkeypatch below targets services.agent_coding.agent.* specifically. This
 is the same trap documented in the P2-1 spec.
 """
+import json
+
 import pytest
+
 from services.agent_coding import agent as coding_agent
+from shared import vocab
 from shared.llm import TruncatedResponseError
 from shared.schemas import AgentInput, SoapNote
 
@@ -741,6 +821,7 @@ INPUT = AgentInput(encounter_id=1, note_id=1, soap=SOAP)
 
 
 def _patch(monkeypatch, response):
+    """Returns a dict that captures the log_decision kwargs."""
     def fake_call(component, system, user, **kwargs):
         if isinstance(response, Exception):
             raise response
@@ -751,6 +832,13 @@ def _patch(monkeypatch, response):
                         lambda **kw: logged.update(kw))
     return logged
 
+
+def _one(system, code, **kw):
+    entry = {"system": system, "code": code, "description": "d", **kw}
+    return json.dumps({"codes": [entry], "confidence": 0.8})
+
+
+# ---------- parsing guards ----------
 
 def test_malformed_json_raises_coding_error(monkeypatch):
     _patch(monkeypatch, "not json at all")
@@ -790,10 +878,109 @@ def test_truncated_response_becomes_coding_error(monkeypatch):
         coding_agent.run(INPUT)
 
 
+# ---------- happy path and registry logging ----------
+
 def test_empty_codes_list_round_trips(monkeypatch):
     _patch(monkeypatch, '{"codes": [], "confidence": 0.5}')
     out = coding_agent.run(INPUT)
     assert out.codes == []
+
+
+def test_happy_path_logs_the_decision(monkeypatch):
+    """Every agent logging to the registry is a CLAUDE.md convention, and
+    P2-7 depends on it. tests/test_prior_auth_agent.py asserts the same
+    fields."""
+    logged = _patch(monkeypatch, _one("ICD-10", "E11.9"))
+    out = coding_agent.run(INPUT)
+    assert logged["encounter_id"] == 1
+    assert logged["note_id"] == 1
+    assert logged["agent_name"] == "coding"
+    assert logged["confidence"] == out.confidence
+    assert logged["output"] == out.model_dump()
+    assert logged["model"] and logged["effort"]
+    assert isinstance(logged["latency_ms"], int)
+
+
+# ---------- enrichment: the agent computes status, the model cannot ----------
+
+def test_real_icd10_code_is_verified(monkeypatch):
+    _patch(monkeypatch, _one("ICD-10", "E11.9"))
+    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "verified"
+
+
+def test_fabricated_code_is_not_found_and_still_returned(monkeypatch):
+    _patch(monkeypatch, _one("ICD-10", "M9999"))
+    out = coding_agent.run(INPUT)
+    assert out.codes[0].vocabulary_status == "not_found"
+    assert out.codes[0].code == "M9999"   # kept, not dropped
+    assert out.not_found_count == 1
+
+
+def test_cpt_code_is_unchecked_never_not_found(monkeypatch):
+    _patch(monkeypatch, _one("CPT", "99213"))
+    out = coding_agent.run(INPUT)
+    assert out.codes[0].vocabulary_status == "unchecked"
+    assert out.not_found_count == 0
+    assert out.verified_count == 0
+
+
+def test_hcpcs_suggestion_flows_end_to_end(monkeypatch):
+    """Regression test for the 502-and-biased-sample failure that admitting
+    "HCPCS" exists to prevent. Nothing else at agent level touches the
+    third system value."""
+    _patch(monkeypatch, _one("HCPCS", "J1885"))
+    out = coding_agent.run(INPUT)
+    assert out.codes[0].vocabulary_status == "verified"
+
+
+def test_fabricated_code_mislabelled_cpt_is_still_not_found(monkeypatch):
+    """The escape hatch, tested through the agent rather than only through
+    classify. This pins that _enrich passes system through unbranched
+    instead of deciding for itself."""
+    _patch(monkeypatch, _one("CPT", "M9999"))
+    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "not_found"
+
+
+def test_real_icd10_code_mislabelled_cpt_is_still_verified(monkeypatch):
+    _patch(monkeypatch, _one("CPT", "E11.9"))
+    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "verified"
+
+
+def test_real_cpt_code_mislabelled_icd10_is_not_found(monkeypatch):
+    """The conservative distortion the spec admits in section 1a."""
+    _patch(monkeypatch, _one("ICD-10", "99213"))
+    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "not_found"
+
+
+def test_model_claim_of_verified_is_overridden(monkeypatch):
+    """THE most important test in this file. Without it the trust boundary
+    is unenforced."""
+    _patch(monkeypatch, _one("ICD-10", "M9999",
+                             vocabulary_status="verified"))
+    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "not_found"
+
+
+def test_mixed_response_counts_exclude_unchecked(monkeypatch):
+    _patch(monkeypatch, json.dumps({"codes": [
+        {"system": "ICD-10", "code": "E11.9", "description": "d"},
+        {"system": "ICD-10", "code": "M9999", "description": "d"},
+        {"system": "CPT", "code": "99213", "description": "d"},
+    ], "confidence": 0.8}))
+    out = coding_agent.run(INPUT)
+    assert out.verified_count == 1
+    assert out.not_found_count == 1
+    assert len(out.codes) == 3
+
+
+def test_vocabulary_version_comes_from_the_module(monkeypatch):
+    _patch(monkeypatch, _one("ICD-10", "E11.9"))
+    assert coding_agent.run(INPUT).vocabulary_version == vocab.VOCAB_VERSION
+
+
+def test_model_cannot_set_vocabulary_version(monkeypatch):
+    _patch(monkeypatch, json.dumps({
+        "codes": [], "confidence": 0.5, "vocabulary_version": "attacker"}))
+    assert coding_agent.run(INPUT).vocabulary_version == vocab.VOCAB_VERSION
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -802,6 +989,11 @@ Run: `pytest tests/test_coding_agent.py -v`
 Expected: FAIL, `AttributeError: module ... has no attribute 'CodingError'`
 
 - [ ] **Step 3: Rewrite `services/agent_coding/agent.py`**
+
+This block replaces everything in the file **except** `_SYSTEM`. Leave the
+existing `_SYSTEM` string exactly where it is for now; Task 9 rewrites it.
+Pasting this block without keeping `_SYSTEM` gives `NameError` at the
+`call()` line.
 
 ```python
 """Coding/Eligibility Agent: suggest codes, flag possible eligibility issues.
@@ -824,6 +1016,11 @@ from shared.schemas import (
     AgentInput, CodeSuggestion, CodingOutput, ModelCodingPayload,
 )
 
+# Provisional. Task 13 pins the real value from observed usage. The library
+# default is 1500 and this agent emits the largest output of the three, so
+# the cap is a live truncation risk rather than a formality.
+_MAX_TOKENS = 4000
+
 
 class CodingError(ValueError):
     """Raised when the model's response cannot be parsed into a CodingOutput.
@@ -838,12 +1035,41 @@ class CodingError(ValueError):
             f"Coding parsing failed: {reason}. Raw output: {preview!r}")
 
 
+def _enrich(payload: ModelCodingPayload) -> CodingOutput:
+    """Turn what the model said into what the agent stands behind.
+
+    The agent never branches on `system` itself; that decision lives in
+    vocab.classify, so this file and P2-4 cannot drift apart.
+    """
+    codes = []
+    for suggestion in payload.codes:
+        # Stored in conventional dotted display form. Only the LOOKUP is
+        # normalized, and classify does that internally. Do not pass this
+        # through vocab.normalize: it strips the dot and would destroy the
+        # display form this line exists to preserve.
+        code = suggestion.code.strip().upper()
+        codes.append(CodeSuggestion(
+            system=suggestion.system,
+            code=code,
+            description=suggestion.description,
+            eligibility_flag=suggestion.eligibility_flag,
+            eligibility_reason=suggestion.eligibility_reason,
+            vocabulary_status=vocab.classify(suggestion.system, code),
+        ))
+    return CodingOutput(
+        codes=codes,
+        confidence=payload.confidence,
+        vocabulary_version=vocab.VOCAB_VERSION,
+    )
+
+
 def run(inp: AgentInput) -> CodingOutput:
     model, effort = ROUTING["coding"]
     started = time.perf_counter()
 
     try:
-        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json())
+        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json(),
+                   max_tokens=_MAX_TOKENS)
     except TruncatedResponseError as exc:
         # raw="" because call() raises before returning any text. There is
         # no response to preview; the reason carries the diagnosis.
@@ -876,9 +1102,6 @@ def run(inp: AgentInput) -> CodingOutput:
     return out
 ```
 
-Leave `_SYSTEM` as-is for now; Task 9 rewrites it. Add a placeholder
-`_enrich` that Task 8 fills in.
-
 No retry loop on malformed JSON. P1-2's retry was justified by a measured
 rate (1 malformed sample in a 120-note run) and no equivalent measurement
 exists for this agent yet.
@@ -892,12 +1115,12 @@ Expected: PASS
 
 ```bash
 git add services/agent_coding/agent.py tests/test_coding_agent.py
-git commit -m "feat(P2-3): harden coding agent parsing with CodingError"
+git commit -m "feat(P2-3): agent computes vocabulary status, model cannot claim it"
 ```
 
 ---
 
-### Task 8: Enrichment via `classify`, and eligibility degradation
+### Task 8: Degrade unsubstantiated eligibility flags
 
 **Files:**
 - Modify: `services/agent_coding/agent.py`
@@ -906,60 +1129,12 @@ git commit -m "feat(P2-3): harden coding agent parsing with CodingError"
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-def _one(system, code, **kw):
-    import json
-    entry = {"system": system, "code": code, "description": "d", **kw}
-    return json.dumps({"codes": [entry], "confidence": 0.8})
-
-
-def test_real_icd10_code_is_verified(monkeypatch):
-    _patch(monkeypatch, _one("ICD-10", "E11.9"))
-    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "verified"
-
-
-def test_fabricated_code_is_not_found_and_still_returned(monkeypatch):
-    _patch(monkeypatch, _one("ICD-10", "M9999"))
-    out = coding_agent.run(INPUT)
-    assert out.codes[0].vocabulary_status == "not_found"
-    assert out.codes[0].code == "M9999"   # kept, not dropped
-    assert out.not_found_count == 1
-
-
-def test_cpt_code_is_unchecked_never_not_found(monkeypatch):
-    _patch(monkeypatch, _one("CPT", "99213"))
-    out = coding_agent.run(INPUT)
-    assert out.codes[0].vocabulary_status == "unchecked"
-    assert out.not_found_count == 0
-    assert out.verified_count == 0
-
-
-def test_hcpcs_suggestion_flows_end_to_end(monkeypatch):
-    """Regression test for the 502-and-biased-sample failure that
-    admitting "HCPCS" exists to prevent. Nothing else at agent level
-    touches the third system value."""
-    _patch(monkeypatch, _one("HCPCS", "J1885"))
-    out = coding_agent.run(INPUT)
-    assert out.codes[0].vocabulary_status == "verified"
-
-
-def test_model_claim_of_verified_is_overridden(monkeypatch):
-    """THE most important test in this file. Without it the trust boundary
-    is unenforced."""
-    _patch(monkeypatch, _one("ICD-10", "M9999",
-                             vocabulary_status="verified"))
-    assert coding_agent.run(INPUT).codes[0].vocabulary_status == "not_found"
-
-
-def test_vocabulary_version_comes_from_the_module(monkeypatch):
-    _patch(monkeypatch, _one("ICD-10", "E11.9"))
-    assert coding_agent.run(INPUT).vocabulary_version == vocab.VOCAB_VERSION
-
-
 def test_unsubstantiated_eligibility_flag_degrades_without_losing_others(
         monkeypatch):
-    """The second assertion is the point: it is the regression test
-    against reintroducing whole-output rejection and its sampling bias."""
-    import json
+    """The second half is the point: it is the regression test against
+    reintroducing whole-output rejection and its sampling bias. A
+    model_validator would have discarded the good code alongside the bad
+    flag, and the loss would have looked like an ordinary parse failure."""
     _patch(monkeypatch, json.dumps({"codes": [
         {"system": "ICD-10", "code": "E11.9", "description": "d",
          "eligibility_flag": True, "eligibility_reason": "   "},
@@ -971,55 +1146,41 @@ def test_unsubstantiated_eligibility_flag_degrades_without_losing_others(
     assert out.codes[1].vocabulary_status == "verified"
 
 
+def test_eligibility_flag_with_null_reason_degrades(monkeypatch):
+    _patch(monkeypatch, _one("ICD-10", "E11.9", eligibility_flag=True))
+    assert coding_agent.run(INPUT).codes[0].eligibility_flag is False
+
+
 def test_substantiated_eligibility_flag_is_preserved(monkeypatch):
     _patch(monkeypatch, _one("ICD-10", "E11.9", eligibility_flag=True,
                              eligibility_reason="Commonly requires review"))
-    out = coding_agent.run(INPUT)
-    assert out.codes[0].eligibility_flag is True
+    assert coding_agent.run(INPUT).codes[0].eligibility_flag is True
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `pytest tests/test_coding_agent.py -v`
-Expected: FAIL
+Run: `pytest tests/test_coding_agent.py -k eligibility -v`
+Expected: FAIL on the first two. `_enrich` currently passes the flag
+through unchanged.
 
-- [ ] **Step 3: Implement `_enrich`**
+- [ ] **Step 3: Add the degradation to `_enrich`**
+
+Inside the existing loop, between the `code = ...` line and the
+`codes.append(...)` call:
 
 ```python
-def _enrich(payload: ModelCodingPayload) -> CodingOutput:
-    """Turn what the model said into what the agent stands behind.
-
-    The agent never branches on `system` itself; that decision lives in
-    vocab.classify, so this file and P2-4 cannot drift apart.
-    """
-    codes = []
-    for suggestion in payload.codes:
-        code = suggestion.code.strip().upper()
-        # Stored in conventional dotted display form. Only the LOOKUP is
-        # normalized (classify does that internally). Do not pass this
-        # through vocab.normalize: it strips the dot and would destroy the
-        # display form this line exists to preserve.
         flag = suggestion.eligibility_flag
         reason = suggestion.eligibility_reason
         if flag and not (reason or "").strip():
-            # Degrade this one suggestion. Rejecting the whole payload
+            # Degrade THIS suggestion only. Rejecting the whole payload
             # would discard every correctly validated code alongside it and
-            # bias any rate computed over successful runs.
+            # bias any rate computed over successful runs, while looking
+            # from the outside like an ordinary parse failure.
             flag = False
-        codes.append(CodeSuggestion(
-            system=suggestion.system,
-            code=code,
-            description=suggestion.description,
-            eligibility_flag=flag,
-            eligibility_reason=reason,
-            vocabulary_status=vocab.classify(suggestion.system, code),
-        ))
-    return CodingOutput(
-        codes=codes,
-        confidence=payload.confidence,
-        vocabulary_version=vocab.VOCAB_VERSION,
-    )
 ```
+
+Then change the `codes.append(...)` call to pass `eligibility_flag=flag`
+and `eligibility_reason=reason` instead of reading them off `suggestion`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1030,7 +1191,7 @@ Expected: PASS
 
 ```bash
 git add services/agent_coding/agent.py tests/test_coding_agent.py
-git commit -m "feat(P2-3): agent computes vocabulary status, model cannot claim it"
+git commit -m "feat(P2-3): degrade unsubstantiated eligibility flags per suggestion"
 ```
 
 ---
@@ -1208,13 +1369,40 @@ git commit -m "fix(P2-3): ship vendored vocabularies into the coding image"
 **Files:**
 - Modify: `docs/TECH-DESIGN.md:114`
 
-- [ ] **Step 1: Replace the stale `CodingOutput` JSON shape**
+- [ ] **Step 1: Replace the stale `CodingOutput` JSON shape at line 114**
 
-Include `vocabulary_status`, `eligibility_reason`, `vocabulary_version`,
-`verified_count`, and `not_found_count`, and record that `system` now
-accepts `"HCPCS"` alongside `"ICD-10"` and `"CPT"`.
+```json
+{
+  "agent_name": "coding",
+  "codes": [
+    {
+      "system": "ICD-10",
+      "code": "E11.9",
+      "description": "Type 2 diabetes mellitus without complications",
+      "vocabulary_status": "verified",
+      "eligibility_flag": false,
+      "eligibility_reason": null
+    }
+  ],
+  "confidence": 0.0,
+  "vocabulary_version": "ICD-10-CM FY2026 + HCPCS Level II 2026",
+  "verified_count": 1,
+  "not_found_count": 0
+}
+```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Add a sentence under the block**
+
+State that `system` accepts `"ICD-10"`, `"CPT"`, or `"HCPCS"`; that
+`vocabulary_status` is computed by the agent and is one of `verified`,
+`not_found`, or `unchecked`; and that `verified_count` and
+`not_found_count` are computed fields excluding `unchecked` from both, per
+the P2-3 spec's section 2a.
+
+Use the real `VOCAB_VERSION` string from Task 1 rather than the placeholder
+above.
+
+- [ ] **Step 3: Commit**
 
 ```bash
 git add docs/TECH-DESIGN.md
@@ -1225,47 +1413,133 @@ git commit -m "docs(P2-3): update CodingOutput shape in tech design"
 
 ### Task 13: Live verification against the real API
 
-Manual, not an automated test. Follows the P1-3 and P2-1 precedent.
+Manual, not an automated test. Follows the P1-3 and P2-1 precedent. This is
+the step that closes P2-3's roadmap exit criteria.
 
-- [ ] **Step 1: Run two real SOAP notes at a generous cap**
+- [ ] **Step 1: Bring up Postgres and confirm the environment**
 
-Use `max_tokens=4000` so the observation is not itself truncated. One note
-should plausibly yield several diagnoses plus a procedure or drug; one
-should be simple.
+`run()` calls `log_decision`, which inserts into `agent_decisions`. That
+table has `NOT NULL REFERENCES` to both `encounters(id)` and `notes(id)`
+(see `db/schema.sql`), and `make db-init` seeds neither. A hardcoded
+`encounter_id` would hit the foreign-key constraint the moment `log_decision`
+runs. The script below uses `insert_encounter`/`insert_note` from
+`shared/db.py`, the same helpers `services/intake/app.py` uses. P2-1 hit
+this exact wall; do not shortcut it.
 
-- [ ] **Step 2: Confirm the lookup path works on real model output**
+```bash
+docker compose up -d db
+make db-init
+```
 
-At least one suggested code must come back `verified`. If every code is
+Confirm `.env` has a real `ANTHROPIC_API_KEY`. Do **not** `source .env`;
+values can execute as commands. The app reads it through
+`shared/config.py`.
+
+- [ ] **Step 2: Run two real SOAP notes and capture token usage**
+
+The cap is deliberately generous here so the observation is not itself
+truncated. `shared/llm.py::call` discards the response object, so
+`resp.usage` never reaches the caller; the wrapper below is how the counts
+become observable without changing library code.
+
+```bash
+python - <<'EOF'
+import shared.llm as llm
+from shared.db import insert_encounter, insert_note
+from services.agent_coding import agent as coding_agent
+from shared.schemas import AgentInput, SoapNote
+
+# Observe output tokens without editing shared/llm.py. call() resolves
+# _client at call time, so wrapping the bound method here is enough.
+_real_create = llm._client.messages.create
+observed = []
+
+
+def spy(**kwargs):
+    resp = _real_create(**kwargs)
+    observed.append(resp.usage.output_tokens)
+    return resp
+
+
+llm._client.messages.create = spy
+
+rich = SoapNote(
+    subjective="55-year-old with type 2 diabetes here for follow-up, also "
+               "reports burning feet at night and a productive cough.",
+    objective="BP 148/92. A1c 8.4. Diminished monofilament sensation "
+              "bilaterally. Coarse crackles at the right base.",
+    assessment="Type 2 diabetes, uncontrolled, with peripheral neuropathy. "
+               "Hypertension. Community-acquired pneumonia.",
+    plan="Increase metformin. Start lisinopril. Ketorolac given in office "
+         "for pain. Chest X-ray obtained. Follow up in 2 weeks.",
+)
+simple = SoapNote(
+    subjective="Here for a routine wellness check, feeling well.",
+    objective="Vitals normal, exam unremarkable.",
+    assessment="Healthy adult, no acute issues.",
+    plan="Routine follow-up in 12 months.",
+)
+
+for label, soap in [("RICH", rich), ("SIMPLE", simple)]:
+    encounter_id = insert_encounter(None, "transcript")
+    note_id = insert_note(encounter_id, soap.model_dump(),
+                          "manual-verification", "xhigh")
+    inp = AgentInput(encounter_id=encounter_id, note_id=note_id, soap=soap)
+    print(f"=== {label} ===")
+    print(coding_agent.run(inp).model_dump_json(indent=2))
+
+print(f"=== OUTPUT TOKENS: {observed}, max={max(observed)} ===")
+EOF
+```
+
+- [ ] **Step 3: Confirm the lookup path works on real model output**
+
+At least one suggested code must come back `verified`. **If every code is
 `not_found`, suspect the normalization or the parser before suspecting the
-model, since that is the exact symptom of a dot-handling bug.
+model**, since that is the exact symptom of a dot-handling bug or of having
+vendored the `order` file instead of the `codes` file.
 
-- [ ] **Step 3: Classify every `not_found` code by cause**
+The rich note is written to elicit an HCPCS-eligible item (the ketorolac)
+and a procedure, so it should exercise more than one `system` value.
 
-Use the four causes in spec section 1a: fabricated, real but absent from the
-pinned releases, a real CPT code the model mislabelled, or degenerate input.
-**This is the only measurement of the metric's floor this task produces.**
-Without it, P2-4 cannot tell a model that hallucinates from one that simply
-predates the pinned release. Record the tally in the PR description.
+- [ ] **Step 4: Classify every `not_found` code by cause**
 
-- [ ] **Step 4: Pin `max_tokens`**
+Use the four causes in spec section 1a: fabricated, real but absent from
+the pinned releases, a real CPT code the model mislabelled, or degenerate
+input. **This is the only measurement of the metric's floor that this task
+produces.** Without it, P2-4 cannot tell a model that hallucinates from one
+that simply predates the pinned release. Record the tally in the PR
+description.
 
-Take the largest observed output token count, double it, round up to the
-nearest 500, and use at least 2000. Record the number and the observation it
-came from in a comment at the call site.
+- [ ] **Step 5: Pin `_MAX_TOKENS` from the observed usage**
 
-`max_tokens` is worth choosing carefully now: `governance/llm_cache.py::
-cache_key` does NOT include it (only `structuring_eval.py:82` folds it in by
-convention), so when P2-4 adds caching for coding calls its `prompt_version`
-must include `max_tokens` and the prompt hash, or changing the cap
-mid-benchmark produces silent cache HITS blending two configurations.
+Take `max(observed)` from Step 2, double it, round up to the nearest 500,
+and use at least 2000. Replace the provisional `_MAX_TOKENS = 4000` in
+`services/agent_coding/agent.py` with that number and change the comment
+above it to record the observation it came from, for example
+"largest observed output was 1,180 tokens over two live notes".
 
-- [ ] **Step 5: Capture raw request and response JSON in the PR description**
+Worth choosing carefully now, because the protection you would expect is
+not there: `governance/llm_cache.py::cache_key` takes
+`(task, model, prompt_version, payload)` and does **not** include
+`max_tokens`. Only `governance/structuring_eval.py:82` folds it in, by
+convention; `facts.py` and `judge.py` pass a bare `"v1"`. So when P2-4 adds
+caching for coding calls, its `prompt_version` must include `max_tokens`
+and the prompt hash, following the `structuring_eval.py` pattern. Otherwise
+changing the cap mid-benchmark produces silent cache **hits** that blend two
+configurations into one number.
 
-- [ ] **Step 6: Final check and commit**
+- [ ] **Step 6: Capture raw request and response JSON in the PR description**
+
+Not committed as a fixture. This is the manual sign-off that closes P2-3's
+exit criteria, the same way P1-3 was first verified by hand.
+
+- [ ] **Step 7: Final check and commit**
 
 ```bash
 pytest -q && ruff check .
-git add -A && git commit -m "feat(P2-3): pin max_tokens from observed usage"
+git add services/agent_coding/agent.py
+git commit -m "feat(P2-3): pin max_tokens from observed live usage"
 ```
 
 ---
