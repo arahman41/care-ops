@@ -73,8 +73,50 @@ VOCAB_SHA256  = "..."                # sha256 of the DECOMPRESSED content
 def load_codes() -> frozenset[str]: ...
 
 def normalize(code: str) -> str: ...
-def is_valid(code: str) -> bool: ...
+def looks_like_cpt(code: str) -> bool: ...
+def classify(system: str, code: str) -> Literal["verified", "not_found", "unchecked"]: ...
 ```
+
+`classify` rather than a bare `is_valid` is deliberate. The module has two
+consumers, this agent and P2-4, and the mapping from a suggestion to a
+status is the thing both must agree on. If P2-4 re-derived it from
+`is_valid`, the two could diverge and the divergence would show up as a
+scoring difference rather than as an error, which is exactly the argument
+`shared/llm.py::extract_json`'s docstring makes about keeping shared logic
+in one place. A bare `is_valid` is also ambiguous for a caller holding a CPT
+code, since `is_valid("99213")` is `False` for a perfectly real code.
+
+**`classify` routes on code shape, not on the model's `system` label, and
+this closes an escape hatch through the trust boundary.** The naive rule
+("if `system == "ICD-10"` then look it up, else `unchecked`") hands the
+model the decision about whether its own code gets checked. A fabricated
+code labelled `CPT` would never be looked up and never count as
+`not_found`, so a model that mislabels systems, or drifts toward emitting
+CPT, would score a better verified rate without hallucinating any less. The
+design elsewhere is careful that the model cannot certify its own codes;
+this would let it exempt them instead, which is the same hole with an extra
+step.
+
+The rule:
+
+1. Normalize the code and look it up in the ICD-10-CM set. Present means
+   `verified`, whatever the model labelled it.
+2. Otherwise, if the code has CPT shape (five digits, or four digits plus a
+   trailing letter for Category II and III) **and** the model declared it
+   `CPT`, return `unchecked`.
+3. Otherwise return `not_found`.
+
+Rule 2 requires shape and label to agree, so a fabricated ICD-10-shaped code
+cannot buy exemption by claiming to be CPT. A genuinely CPT-shaped code
+still lands in `unchecked`, which is honest: with no licensed CPT
+vocabulary, a five-digit code really is unverifiable here, and rule 2 is the
+licensing limitation rather than a gap in the design.
+
+The residual exposure, stated plainly: a fabricated five-digit number
+labelled CPT is `unchecked` and invisible to the metric. Nothing in this
+design can detect that without a CPT vocabulary. The verified rate is
+therefore a hallucination rate **over ICD-10 codes only**, and section 2a's
+denominator is what makes that explicit rather than implied.
 
 The file is committed gzipped, roughly 1 to 2 MB compressed for about 74,000
 codes. Vendoring rather than downloading at build time keeps the test path
@@ -109,6 +151,13 @@ cannot re-include the file. The directory must be re-included first:
 !data/vocab/
 !data/vocab/**
 ```
+
+**Append this after line 18, not before `data/*`.** Order is not cosmetic
+here: negations placed above the `data/*` line are overridden by it and the
+file stays ignored, failing exactly as silently as having no rule at all.
+`!data/vocab/` is the line that does the work, since it re-includes the
+directory so git will descend into it; `!data/vocab/**` is belt and braces
+and does nothing on its own.
 
 Without this the vendored file silently never gets committed, `load_codes`
 raises in CI, and the natural fix is to download at build time, which
@@ -241,9 +290,24 @@ moves whenever the ICD-10 to CPT mix in a note shifts, which is a property
 of the note rather than of the model. Two models could hallucinate at
 identical rates and score differently.
 
-`CodingOutput` therefore exposes both counts as computed fields, so the
-denominator is reconstructible from a stored `agent_decisions` row without
-re-parsing the code list:
+**Across a run, pool the counts; do not average per-note rates.** P2-4
+computes one rate over the whole held-out set by summing `verified_count`
+and `not_found_count` across every note and dividing once. Averaging
+per-note rates is a different number, and a worse one: it weights a note
+with a single ICD-10 code the same as a note with twelve, and it has no
+defined value for the notes that need it least.
+
+**An empty denominator is undefined, and must be reported as undefined
+rather than as 0.0.** A note yielding only CPT codes has zero `verified` and
+zero `not_found`, so its rate is 0/0. Silently coercing that to 0.0 would
+report a perfect hallucination rate for a note where nothing was checked,
+which is the most misleading possible reading. Pooling makes this rare at
+the run level, but the run-level denominator can still be zero on a
+degenerate set, and the harness must say so rather than print a number.
+
+`CodingOutput` exposes both counts as computed fields, so the denominator is
+reconstructible from a stored `agent_decisions` row without re-parsing the
+code list:
 
 ```python
     @computed_field
@@ -305,21 +369,48 @@ so a bare `except CodingError` in `app.py` misses it entirely and FastAPI
 returns a 500. Section 4 argues P2-6 needs a clean per-agent failure signal,
 and this is precisely the failure that would break it. `run()` catches
 `TruncatedResponseError` and re-raises it as `CodingError`, so truncation
-surfaces as a 502 like every other model-side failure. The prior-auth agent
+surfaces as a 502 like every other model-side failure. Pass `raw=""` when
+doing so: `call()` raises before returning any text, so there is no raw
+response to preview, and the implementer should not invent one. The reason
+string carries the diagnosis in this case. The prior-auth agent
 carries this same hole; fixing it there belongs to a follow-up rather than
 this task, and it is recorded in "Known tracked debt" instead of being fixed
 silently across a service this task does not own.
 
-**Set `max_tokens` for this component deliberately now, before P2-4 runs.**
-The default is 1500 (`shared/llm.py:108`), and a full ICD-10 plus CPT list
-with descriptions and eligibility reasons is the largest output of the three
-agents. Raising it later would not be free: `governance/llm_cache.py` keys
-on `max_tokens`, so changing it invalidates every cached coding call and
-orphans paid-for results, which is exactly how a prior run was lost. Right
-now zero coding results are cached, so this is the only moment when the
-value can be chosen at no cost. Pick it during implementation from the
-observed token usage of the live verification runs in section 6, and record
-the chosen number and its rationale in the code.
+**Set `max_tokens` for this component deliberately now, and require P2-4 to
+put it in the cache key.** The default is 1500 (`shared/llm.py:108`), and a
+full ICD-10 plus CPT list with descriptions and eligibility reasons is the
+largest output of the three agents, so truncation is a live risk here in a
+way it is not for prior-auth.
+
+The hazard is the opposite of an orphaned cache, and worth stating
+precisely because the intuitive version is wrong.
+`governance/llm_cache.py::cache_key` takes `(task, model, prompt_version,
+payload)` and does **not** include `max_tokens`. Exactly one call site folds
+it in, by convention: `governance/structuring_eval.py:82` builds
+`version = f"{effort}|{hash_prompt(SYSTEM_PROMPT)}|max{MAX_TOKENS}"`.
+`governance/facts.py:37` and `governance/judge.py:34-35` do not; they pass a
+bare `PROMPT_VERSION = "v1"` literal that a human has to remember to bump.
+No agent service imports `llm_cache` at all today.
+
+So raising `max_tokens` later does not orphan coding results, because there
+are none to orphan. The real risk lands on P2-4: if it caches coding calls
+following the `facts.py` and `judge.py` pattern, `max_tokens` will not be in
+the key, and changing it mid-benchmark produces silent cache **hits** that
+blend two configurations into one number. That is precisely the failure
+`llm_cache.py`'s own module docstring says the key exists to prevent, and
+the weaker call sites do not currently prevent it.
+
+Two requirements follow. Choose the value now, while nothing depends on it,
+and record the number and its rationale in the code. And when P2-4 adds
+caching for coding calls, its `prompt_version` must include `max_tokens` and
+the prompt hash, following the `structuring_eval.py` pattern rather than the
+`facts.py` one.
+
+Sequencing, since the obvious reading is circular: run the section 6 live
+verification at a deliberately generous cap, then pin the value from the
+observed output token counts. Section 6 cannot report usage at a cap that
+section 3 has not chosen yet.
 
 **The system prompt is rewritten to match the new payload.** The current
 `_SYSTEM` string advertises the old shape, including `eligibility_flag` with
@@ -386,8 +477,14 @@ Cases specific to this task, which carry the real weight:
 - A real ICD-10 code resolves to `verified`.
 - A fabricated ICD-10 code resolves to `not_found`, is **still present** in
   the returned codes, and is reflected in `not_found_count`.
-- A CPT code resolves to `unchecked` and never to `not_found`. This guards
-  the metric-corruption case directly.
+- A genuine CPT-shaped code declared as CPT resolves to `unchecked` and
+  never to `not_found`. This guards the metric-corruption case directly.
+- **A fabricated ICD-10-shaped code mislabelled as `system: "CPT"` still
+  resolves to `not_found`.** This is the escape-hatch test from section 1.
+  Without it, the trust boundary has a documented bypass and the verified
+  rate can be gamed by relabelling rather than by improving.
+- A real ICD-10 code mislabelled as `CPT` still resolves to `verified`,
+  confirming rule 1 routes on shape and not on the declared system.
 - A mocked response that claims `vocabulary_status: "verified"` on a
   fabricated code still comes back `not_found`. The claim is dropped by
   `ModelCodingPayload` rather than corrected afterwards, but the observable
@@ -413,12 +510,29 @@ Cases specific to this task, which carry the real weight:
 - The vendored file is actually tracked by git, not merely present on disk.
   This is cheap (`git ls-files --error-unmatch`) and it is the one failure
   the `.gitignore` rule in section 1 exists to prevent, which would
-  otherwise pass locally and fail only in a fresh clone or in CI.
+  otherwise pass locally and fail only in a fresh clone or in CI. The test
+  **skips** rather than fails when no `.git` directory is present, since a
+  source tarball or a Docker build context is a legitimate place to run the
+  suite without git metadata.
+- `classify` returns `verified` for a real ICD-10 code regardless of the
+  declared system, `not_found` for a fabricated ICD-10-shaped code even when
+  declared CPT, and `unchecked` only when shape and declared system both say
+  CPT. These are the unit-level counterparts of the agent tests above, and
+  they belong here because `classify` is the function P2-4 will also call.
 - A handful of known real codes are present.
 - `normalize` maps `e11.9`, `E11.9`, and `E119` to the same key, and all
   three resolve identically through `is_valid`.
 - A syntactically plausible but nonexistent code is absent.
 - `VOCAB_VERSION` is non-empty and consistent with the vendored filename.
+
+`tests/test_schemas.py`, the repo's existing contract-test file for
+`shared/schemas.py`, gains a direct schema-level test that
+`ModelCodeSuggestion` drops an extra `vocabulary_status` key. The agent test
+above pins the observable behaviour, but it does so through pydantic's
+`extra="ignore"` default, which is configuration-sensitive. If a base model
+config ever set `extra="allow"`, the model would regain a channel to
+certify its own codes and the agent test might still pass. A three-line
+schema test catches that directly and cheaply.
 
 `tests/test_coding_app.py`, mirroring `tests/test_prior_auth_app.py`:
 
@@ -443,6 +557,30 @@ been verified. They are not asserted from memory. Confirming the real
 published file and pinning its hash is the first implementation step, and if
 the format differs from the two-column layout assumed here, the loader
 changes accordingly. This is flagged rather than discovered later.
+
+The blast radius is bounded: `load_codes` returns a `frozenset[str]` and
+`normalize` operates on a single code, so both APIs and every consumer are
+format-independent. Only the parser body changes.
+
+Two bounds on the deferral, so it cannot quietly expand:
+
+- **Size ceiling.** If the vendored artifact exceeds roughly 5 MB
+  compressed, stop and revisit rather than committing it. The vendoring
+  argument in section 1 assumes a file small enough that repository weight
+  is a non-issue, and that assumption should be checked rather than
+  discovered after the commit.
+- **Format fallback.** If the only published form is XLSX, or a flat file
+  nested inside a ZIP, do not add a runtime dependency on an office-format
+  reader or unzip at import time. Convert once during implementation, vendor
+  the resulting flat delimited file, and record the provenance and the
+  conversion command in a short note beside the data so the artifact is
+  reproducible from the CMS original.
+
+**Sequencing.** Acquiring, verifying, and pinning the vocabulary is the
+least predictable part of this task and is independent of the agent rewrite.
+It should be the first unit in the implementation plan, with the schema,
+agent, and endpoint work gated behind a confirmed hash, so a surprise in the
+CMS distribution surfaces before any dependent code is written.
 
 ## Out of scope
 
@@ -477,6 +615,16 @@ changes accordingly. This is flagged rather than discovered later.
   rather than the 502 its own design specifies. Same root cause as the fix
   applied here, one service over. Worth folding into P2-6, which is where
   per-agent failure isolation actually gets exercised.
+- **`governance/facts.py` and `governance/judge.py` pass a bare
+  `PROMPT_VERSION = "v1"` literal as their cache `prompt_version`**, while
+  `governance/structuring_eval.py:82` folds in effort, a prompt hash, and
+  `max_tokens`. The two weak call sites depend on a human remembering to
+  bump a string by hand. Editing a judge prompt without bumping it yields
+  silent cache hits blending two prompt versions into one number, which is
+  the exact failure `llm_cache.py`'s module docstring says the key exists to
+  prevent. Found while verifying the `max_tokens` claim in section 3. Not
+  P2-3's to fix, and it does not affect this task, but it sits directly
+  under the Phase 1 headline metric and belongs in Phase 3 governance work.
 
 ## Documentation to update
 
