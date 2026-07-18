@@ -90,3 +90,34 @@ def load_hcpcs() -> frozenset[str]:
 
 def _looks_like_cpt(code: str) -> bool:
     return bool(_CPT_RE.match(code))
+
+
+def classify(system: str, code: str) -> VocabularyStatus:
+    """Map a suggestion to a vocabulary status.
+
+    Order is the design, not an implementation detail:
+
+      1. ICD-10-CM lookup   -> verified, whatever the model called it
+      2. HCPCS Level II     -> verified, whatever the model called it
+      3. CPT shape AND declared CPT -> unchecked
+      4. otherwise          -> not_found
+
+    Rules 1 and 2 ignore the declared system on purpose. Routing on the
+    model's own label would let it decide whether its code gets checked, so
+    a model that drifts toward labelling things CPT would score better
+    without hallucinating less. Rule 3 is the only place the label matters,
+    and it is guarded by a shape test that cannot match either vendored
+    system, since both of those always lead with a letter.
+
+    `system` is a plain str rather than the schema Literal because P2-4 may
+    call this outside the agent's validated path. An unrecognised value
+    still gets both lookups; it just cannot satisfy rule 3.
+    """
+    key = normalize(code)
+    if key in load_icd10():
+        return "verified"
+    if key in load_hcpcs():
+        return "verified"
+    if system == "CPT" and _looks_like_cpt(key):
+        return "unchecked"
+    return "not_found"

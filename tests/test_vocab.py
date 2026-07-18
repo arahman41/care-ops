@@ -119,3 +119,59 @@ def test_vocabulary_sizes_match_the_vendored_artifacts():
     vocabulary moved and VOCAB_VERSION and the pins must move with it."""
     assert len(vocab.load_icd10()) == 74_719
     assert len(vocab.load_hcpcs()) == 8_725
+
+
+def test_classify_verifies_real_codes_regardless_of_declared_system():
+    # Rules 1 and 2 ignore the label entirely.
+    assert vocab.classify("ICD-10", "E11.9") == "verified"
+    assert vocab.classify("CPT", "E11.9") == "verified"
+    assert vocab.classify("HCPCS", "J1885") == "verified"
+    assert vocab.classify("ICD-10", "J1885") == "verified"
+
+
+def test_classify_unchecked_only_when_shape_and_label_both_say_cpt():
+    assert vocab.classify("CPT", "99213") == "unchecked"
+    assert vocab.classify("CPT", "0001T") == "unchecked"
+
+
+def test_classify_fabricated_icd_shaped_code_declared_cpt_is_not_found():
+    """The escape hatch. A model must not be able to exempt its own
+    fabricated code by relabelling it."""
+    assert vocab.classify("CPT", "M9999") == "not_found"
+
+
+def test_classify_fabricated_icd_shaped_code_declared_hcpcs_is_not_found():
+    """The specific hole an earlier draft opened with a shape-based HCPCS
+    rule. M9999 is letter-plus-four-digits, exactly HCPCS shape, and 6,761
+    real ICD-10-CM codes share that shape."""
+    assert vocab.classify("HCPCS", "M9999") == "not_found"
+
+
+def test_classify_cpt_shaped_code_declared_hcpcs_is_not_found():
+    """The other half of rule 3's label guard."""
+    assert vocab.classify("HCPCS", "99213") == "not_found"
+
+
+def test_classify_real_cpt_code_mislabelled_icd10_is_not_found():
+    """A known, conservative distortion: a real code scored as a miss.
+    Pinned so it stays deliberate rather than incidental."""
+    assert vocab.classify("ICD-10", "99213") == "not_found"
+
+
+def test_classify_unrecognised_system_still_gets_both_lookups():
+    # Rules 1 and 2 ignore the label, so a real code verifies anyway.
+    assert vocab.classify("LOINC", "E11.9") == "verified"
+    # Only a code absent from BOTH sets is not_found here.
+    assert vocab.classify("LOINC", "ZZZ999") == "not_found"
+
+
+def test_classify_degenerate_input_is_not_found():
+    assert vocab.classify("ICD-10", "") == "not_found"
+    assert vocab.classify("ICD-10", "N/A") == "not_found"
+
+
+def test_classify_is_normalization_insensitive():
+    assert (vocab.classify("ICD-10", "e11.9")
+            == vocab.classify("ICD-10", "E11.9")
+            == vocab.classify("ICD-10", "E119")
+            == "verified")
