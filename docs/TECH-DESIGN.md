@@ -98,9 +98,15 @@ Prior-Auth (`PriorAuthOutput`):
 Care Gap (`CareGapOutput`):
 ```json
 { "agent_name": "care_gap",
-  "gaps": [{"gap": "", "rule_id": "", "evidence": ""}],
+  "gaps": [{"gap": "", "rule_id": "", "evidence": "",
+            "source": {"organization": "", "title": "", "grade": "A",
+                       "year": 2021, "url": ""}}],
   "confidence": 0.0 }
 ```
+
+Every care gap carries the guideline it implements (`source`), so the citation
+reaches the registry and the Phase 3 transparency report without string
+parsing. `grade` is nullable for ungraded sources.
 
 Coding (`CodingOutput`):
 ```json
