@@ -73,21 +73,29 @@ VOCAB_SHA256  = "..."                # sha256 of the DECOMPRESSED content
 def load_codes() -> frozenset[str]: ...
 
 def normalize(code: str) -> str: ...
-def looks_like_cpt(code: str) -> bool: ...
+def _looks_like_cpt(code: str) -> bool: ...   # private on purpose
 def classify(system: str, code: str) -> Literal["verified", "not_found", "unchecked"]: ...
+def verified_rate(verified: int, not_found: int) -> float | None: ...
 ```
 
-`classify` rather than a bare `is_valid` is deliberate. The module has two
-consumers, this agent and P2-4, and the mapping from a suggestion to a
-status is the thing both must agree on. If P2-4 re-derived it from
-`is_valid`, the two could diverge and the divergence would show up as a
-scoring difference rather than as an error, which is exactly the argument
+`classify` is the only public entry point for turning a suggestion into a
+status, and there is deliberately no public `is_valid`. The module has two
+consumers, this agent and P2-4, and the status mapping is the thing both
+must agree on. If either re-derived it from a membership primitive, the two
+could diverge, and the divergence would surface as a scoring difference
+rather than an error, which is exactly the argument
 `shared/llm.py::extract_json`'s docstring makes about keeping shared logic
-in one place. A bare `is_valid` is also ambiguous for a caller holding a CPT
-code, since `is_valid("99213")` is `False` for a perfectly real code.
+in one place. A bare `is_valid` would also be actively misleading to a
+caller holding a CPT code, since `is_valid("99213")` is `False` for a
+perfectly real code. `_looks_like_cpt` is private for the same reason:
+exposing it invites a caller to rebuild the routing from its parts.
 
-**`classify` routes on code shape, not on the model's `system` label, and
-this closes an escape hatch through the trust boundary.** The naive rule
+**`classify` routes on the vocabulary first and on shape second, never on
+the model's `system` label alone, and this closes an escape hatch through
+the trust boundary.** The ordering matters and is easy to get wrong: an
+implementer told only "route on shape" will write
+`if icd_shape: lookup elif cpt_shape: unchecked`, which breaks rule 1 by
+skipping the lookup for anything CPT-shaped. The naive rule
 ("if `system == "ICD-10"` then look it up, else `unchecked`") hands the
 model the decision about whether its own code gets checked. A fabricated
 code labelled `CPT` would never be looked up and never count as
@@ -97,7 +105,7 @@ design elsewhere is careful that the model cannot certify its own codes;
 this would let it exempt them instead, which is the same hole with an extra
 step.
 
-The rule:
+The rule, operating throughout on the **normalized** string:
 
 1. Normalize the code and look it up in the ICD-10-CM set. Present means
    `verified`, whatever the model labelled it.
@@ -106,17 +114,58 @@ The rule:
    `CPT`, return `unchecked`.
 3. Otherwise return `not_found`.
 
-Rule 2 requires shape and label to agree, so a fabricated ICD-10-shaped code
-cannot buy exemption by claiming to be CPT. A genuinely CPT-shaped code
-still lands in `unchecked`, which is honest: with no licensed CPT
-vocabulary, a five-digit code really is unverifiable here, and rule 2 is the
-licensing limitation rather than a gap in the design.
+Degenerate input (`""`, `"N/A"`, prose) falls to rule 3 and counts as
+`not_found`. That is the right default, since a suggestion that does not
+contain a code is a defect rather than something to excuse, but it means
+`not_found` is not purely a count of invented codes.
 
-The residual exposure, stated plainly: a fabricated five-digit number
-labelled CPT is `unchecked` and invisible to the metric. Nothing in this
-design can detect that without a CPT vocabulary. The verified rate is
-therefore a hallucination rate **over ICD-10 codes only**, and section 2a's
-denominator is what makes that explicit rather than implied.
+Rule 2 requires shape and label to agree, so a fabricated ICD-10-shaped code
+cannot buy exemption by claiming to be CPT. The conjunction cuts the other
+way too, and the spec should not pretend otherwise: **a real CPT code that
+the model mislabels as `"ICD-10"` fails the lookup, fails rule 2's label
+test, and is counted `not_found`.** A real code is then scored as a
+hallucination. That direction is conservative, in that it understates the
+model's performance rather than flattering it, which is why the conjunction
+is still the right call. It is a known distortion rather than a hidden one,
+and section 5 tests both mislabel directions so the behaviour is pinned
+rather than incidental.
+
+### 1a. What `not_found` actually measures, and its floor
+
+`not_found` is **not** a clean count of invented codes, and treating it as
+one would overstate what this design can support. It fires for at least four
+distinct causes:
+
+1. Genuinely fabricated codes, the signal of interest.
+2. Real ICD-10-CM codes absent from the **pinned** FY2026 release. Models
+   trained on earlier data will emit retired or since-revised codes that
+   were valid when written.
+3. Real codes from adjacent CMS vocabularies, most importantly HCPCS
+   Level II (`J1885`, `G0008`). Their letter-plus-four-digits shape fails
+   the ICD-10-CM lookup, fails the all-digit CPT shape test, and lands in
+   rule 3.
+4. Mislabelled real CPT codes, per the conjunction above, and degenerate
+   non-code strings.
+
+Causes 2, 3, and 4 give the metric a **nonzero floor unrelated to
+hallucination.** For a number feeding P2-4 and Phase 3 drift, that floor has
+to be stated rather than discovered when a model looks worse than it is.
+The honest name for what is computed is *the rate of suggested codes not
+present in one pinned CMS ICD-10-CM release*, and section 2a defines it that
+way. Calling it a hallucination rate without qualification would be an
+overclaim.
+
+Section 6 requires eyeballing every `not_found` code from the live runs
+specifically to see which of the four causes dominates in practice. That is
+cheap, it happens once, and it is the difference between a number that can
+be reported and one that cannot.
+
+The residual exposure in the other direction, stated plainly: **any string
+matching the CPT shape test** and labelled `CPT`, whether or not it is a
+real CPT code, is `unchecked` and invisible to the metric. That is `99999`
+as much as `9999F` or `0001T`. Nothing in this design can detect it without
+a licensed CPT vocabulary, and section 2a's denominator is what keeps the
+exclusion explicit rather than implied.
 
 The file is committed gzipped, roughly 1 to 2 MB compressed for about 74,000
 codes. Vendoring rather than downloading at build time keeps the test path
@@ -230,17 +279,21 @@ approach only papers over:
 
 `vocabulary_status` is a three-state literal, not a boolean, and the third
 state is the point. `not_found` means the code was checked against the
-pinned vocabulary and is not in it, which is the hallucination signal.
-`unchecked` means no licensed vocabulary is available to check against,
-which is true of every CPT code. Collapsing these into one boolean would let
-CPT codes inflate the unverified count without being evidence of
-hallucination, corrupting the exact metric this design exists to produce.
+pinned vocabulary and is not in it, which carries the hallucination signal
+along with the floor described in section 1a. `unchecked` means no licensed
+vocabulary was available to check against, which is the outcome for a code
+that both looks like CPT and is declared CPT. Note the precision: it is
+**not** true of every CPT code, because a real CPT code the model mislabels
+as ICD-10 lands in `not_found` instead, per section 1a. Collapsing these
+into one boolean would let CPT codes inflate the unverified count without
+being evidence of hallucination, corrupting the exact metric this design
+exists to produce.
 
-Invalid codes are returned rather than dropped. A reviewer sees everything
-the model said plus whether each code is real, and the hallucination rate
-becomes a first-class measurable for P2-4 and for Phase 3 drift detection.
-Dropping them would leave a reviewer reading the artifact alone unable to
-tell that the model hallucinated.
+Unrecognised codes are returned rather than dropped. A reviewer sees
+everything the model said plus whether each code was found, and the
+verified rate becomes a first-class measurable for P2-4 and for Phase 3
+drift detection. Dropping them would leave a reviewer reading the artifact
+alone unable to tell that anything was wrong.
 
 `eligibility_flag` keeps its name, since both the roadmap and the agent's
 own name say eligibility, but gains a precise definition recorded in the
@@ -275,8 +328,14 @@ follow-up.
 
 ### 2a. Defining the metric this produces
 
-Section 2 argues that a three-state literal protects the hallucination
-metric. That argument is only complete if the metric itself is written down,
+**One name, used everywhere: the verified rate.** Earlier drafts drifted
+between "hallucination rate" and "verified rate," which is worse than
+pedantic because the two run in opposite directions and section 1a shows
+`not_found` is not a clean hallucination count anyway. This spec defines and
+uses `verified_rate` only.
+
+Section 2 argues that a three-state literal protects that metric. The
+argument is only complete if the metric itself is written down,
 so P2-4 does not have to infer it:
 
 ```
@@ -300,10 +359,27 @@ defined value for the notes that need it least.
 **An empty denominator is undefined, and must be reported as undefined
 rather than as 0.0.** A note yielding only CPT codes has zero `verified` and
 zero `not_found`, so its rate is 0/0. Silently coercing that to 0.0 would
-report a perfect hallucination rate for a note where nothing was checked,
-which is the most misleading possible reading. Pooling makes this rare at
-the run level, but the run-level denominator can still be zero on a
-degenerate set, and the harness must say so rather than print a number.
+report a perfect score for a note where nothing was checked, which is the
+most misleading possible reading. Pooling makes this rare at the run level,
+but the run-level denominator can still be zero on a degenerate set, and the
+harness must say so rather than print a number.
+
+**These two rules ship as code, not only as prose.** `shared/icd10.py`
+exposes the helper from section 1:
+
+```python
+def verified_rate(verified: int, not_found: int) -> float | None:
+    """None when the denominator is zero. Never 0.0 in that case."""
+```
+
+Leaving the formula, the pooling rule, and the zero-denominator rule to
+P2-4 prose would contradict this spec's own argument for `classify`: shared
+logic that two consumers must agree on belongs in one place, because
+divergence surfaces as a scoring difference rather than an error. A
+four-line function with two tests removes the possibility. P2-4 sums
+`verified_count` and `not_found_count` across the held-out set and calls
+this once. The `float | None` return is what forces the caller to handle the
+undefined case rather than let a silent 0.0 through.
 
 `CodingOutput` exposes both counts as computed fields, so the denominator is
 reconstructible from a stored `agent_decisions` row without re-parsing the
@@ -345,10 +421,12 @@ Adopt the prior-auth structure wholesale rather than re-deriving it:
 Then the enrichment step that is specific to this task. The parsed
 `ModelCodingPayload` is mapped into the returned `CodingOutput`:
 
-- Each `ModelCodeSuggestion` becomes a `CodeSuggestion` with
-  `vocabulary_status` computed by the agent. ICD-10 codes resolve to
-  `verified` or `not_found` via `shared.icd10.is_valid`; CPT codes are
-  always `unchecked`.
+- Each `ModelCodeSuggestion` becomes a `CodeSuggestion` whose
+  `vocabulary_status` is the return value of
+  `shared.icd10.classify(system, code)`, and nothing else. The agent does
+  not branch on `system` itself. Routing on the declared system here is the
+  escape hatch section 1 exists to close, and re-deriving the rules in the
+  agent would put two copies of them in the codebase.
 - Any suggestion with `eligibility_flag=True` and a missing or blank
   `eligibility_reason` has its flag degraded to `False`, per section 2.
 - `vocabulary_version` is set from `shared.icd10.VOCAB_VERSION`.
@@ -484,7 +562,12 @@ Cases specific to this task, which carry the real weight:
   Without it, the trust boundary has a documented bypass and the verified
   rate can be gamed by relabelling rather than by improving.
 - A real ICD-10 code mislabelled as `CPT` still resolves to `verified`,
-  confirming rule 1 routes on shape and not on the declared system.
+  confirming rule 1 consults the vocabulary before considering the declared
+  system.
+- **A real CPT code mislabelled as `"ICD-10"` resolves to `not_found`.**
+  This pins the conservative distortion admitted in section 1a. It is the
+  unsafe direction of the mislabel pair, and testing only the safe one would
+  leave the spec claiming a property it never checks.
 - A mocked response that claims `vocabulary_status: "verified"` on a
   fabricated code still comes back `not_found`. The claim is dropped by
   `ModelCodingPayload` rather than corrected afterwards, but the observable
@@ -511,17 +594,26 @@ Cases specific to this task, which carry the real weight:
   This is cheap (`git ls-files --error-unmatch`) and it is the one failure
   the `.gitignore` rule in section 1 exists to prevent, which would
   otherwise pass locally and fail only in a fresh clone or in CI. The test
-  **skips** rather than fails when no `.git` directory is present, since a
-  source tarball or a Docker build context is a legitimate place to run the
-  suite without git metadata.
+  **skips** rather than fails when either the `.git` directory or the `git`
+  binary is absent, since a source tarball or a Docker build context is a
+  legitimate place to run the suite with neither.
 - `classify` returns `verified` for a real ICD-10 code regardless of the
   declared system, `not_found` for a fabricated ICD-10-shaped code even when
-  declared CPT, and `unchecked` only when shape and declared system both say
-  CPT. These are the unit-level counterparts of the agent tests above, and
-  they belong here because `classify` is the function P2-4 will also call.
+  declared CPT, `not_found` for a real CPT code declared ICD-10, and
+  `unchecked` only when shape and declared system both say CPT. These are
+  the unit-level counterparts of the agent tests above, and they belong here
+  because `classify` is the function P2-4 will also call.
+- `classify` returns `not_found` for degenerate input (`""`, `"N/A"`), so
+  the documented behaviour in section 1 is pinned rather than incidental.
+- `verified_rate` returns the pooled ratio for non-zero denominators, and
+  **`None`, never 0.0, when `verified + not_found == 0`.** The second case
+  is the whole reason the helper exists rather than an inline division.
+- `verified_rate` on a pooled pair differs from the mean of per-note rates
+  on a set constructed so the two diverge. This pins the pooling rule from
+  section 2a as behaviour rather than prose.
 - A handful of known real codes are present.
 - `normalize` maps `e11.9`, `E11.9`, and `E119` to the same key, and all
-  three resolve identically through `is_valid`.
+  three produce the same `classify` result.
 - A syntactically plausible but nonexistent code is absent.
 - `VOCAB_VERSION` is non-empty and consistent with the vendored filename.
 
@@ -533,6 +625,13 @@ above pins the observable behaviour, but it does so through pydantic's
 config ever set `extra="allow"`, the model would regain a channel to
 certify its own codes and the agent test might still pass. A three-line
 schema test catches that directly and cheaply.
+
+The existing `tests/test_schemas.py:26` case, which constructs
+`CodeSuggestion(system="LOINC", ...)` inside `pytest.raises(ValidationError)`,
+still passes after this change but for a partly different reason: the newly
+required `vocabulary_status` would also make it raise. Give it an explicit
+`vocabulary_status` so it continues to test the bad-`system` rejection it
+was written for rather than passing by accident.
 
 `tests/test_coding_app.py`, mirroring `tests/test_prior_auth_app.py`:
 
@@ -549,6 +648,19 @@ description, following the P1-3 and P2-1 precedent. At least one suggested
 ICD-10 code must resolve to `verified` against the vendored vocabulary,
 which confirms the lookup path works end to end on real model output rather
 than only on fixtures.
+
+Two further things must be recorded from these runs, because both are cheap
+here and expensive later:
+
+- **Classify every `not_found` code by cause**, using the four categories in
+  section 1a: fabricated, retired or superseded but once real, a real code
+  from an adjacent vocabulary such as HCPCS Level II, or degenerate input.
+  This is the only measurement of the metric's floor that this task
+  produces, and without it P2-4 cannot tell a model that hallucinates from
+  one that simply predates the pinned release.
+- **Record the observed output token counts**, which is what section 3's
+  `max_tokens` value gets pinned from. Run these verifications at a
+  deliberately generous cap so the observation is not itself truncated.
 
 ## Implementation risk stated up front
 
