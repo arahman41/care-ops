@@ -76,7 +76,8 @@ HCPCS_PATH    = VOCAB_DIR / "..."
 HCPCS_SHA256  = "..."
 
 # Recorded in every CodingOutput; names both releases.
-VOCAB_VERSION = "ICD-10-CM FY2026 + HCPCS Level II 2026"
+# Release identifiers are placeholders until the artifacts are pinned.
+VOCAB_VERSION = "ICD-10-CM FY... + HCPCS Level II ..."
 
 @lru_cache(maxsize=1)
 def load_icd10() -> frozenset[str]: ...
@@ -98,6 +99,23 @@ let a fabricated ICD-10-shaped code declared `HCPCS` reach `unchecked` and
 escape the denominator, reopening the precise hole the rest of this section
 exists to close. Vendoring the real HCPCS release replaces that guess with a
 lookup and removes the question.
+
+**The HCPCS artifact must contain Level II only, and this is an acceptance
+condition on the file rather than a detail of parsing it.** "HCPCS" formally
+comprises Level I, which *is* CPT, and Level II, the alphanumeric codes for
+drugs, supplies, and services. If the acquired CMS artifact carries Level I
+entries, rule 2 would verify CPT codes by lookup. That silently contradicts
+section 1a's claim that CPT cannot be verified here, dissolves the
+`unchecked` bucket this design calls irreducible, and moves the metric,
+all without any test failing. Confirm the file is Level II only before
+pinning it, and if the only available distribution bundles both, filter to
+Level II during the one-time conversion and record that in the provenance
+note.
+
+Both loaders must read their module-level path global **at call time**. The
+default-argument form `def load_icd10(path=ICD10_PATH)` binds at definition
+time, which silently defeats the monkeypatch in the tamper test in section 5
+and turns that test back into the no-op it exists to prevent.
 
 `ICD10_PATH` and `HCPCS_PATH` are derived from the module's own location,
 following
@@ -141,8 +159,11 @@ exposing it invites a caller to rebuild the routing from its parts.
 the model's `system` label alone, and this closes an escape hatch through
 the trust boundary.** The ordering matters and is easy to get wrong: an
 implementer told only "route on shape" will write
-`if icd_shape: lookup elif cpt_shape: unchecked`, which breaks rule 1 by
-skipping the lookup for anything CPT-shaped. The naive rule
+`if icd_shape: lookup elif cpt_shape: unchecked`, which breaks rules 1 and
+2. The rule 2 break is the more damaging one: a real HCPCS code is
+letter-plus-four-digits, so it matches "icd_shape", gets looked up in
+ICD-10-CM only, misses, and returns `not_found`. That silently throws away
+the entire payoff of vendoring HCPCS. The naive rule
 ("if `system == "ICD-10"` then look it up, else `unchecked`") hands the
 model the decision about whether its own code gets checked. A fabricated
 code labelled `CPT` would never be looked up and never count as
@@ -186,7 +207,11 @@ eligibility flags.
 
 `classify` takes `system` as a plain `str` rather than the `Literal`, since
 P2-4 may call it outside the agent's validated path. An unrecognised value
-matches no rule 3 label test and falls through to rule 4, `not_found`.
+still gets both lookups, because rules 1 and 2 ignore the label entirely, so
+a real code returns `verified` no matter what it was called. What an
+unrecognised value cannot do is match rule 3's label test, so such a code is
+`verified` if either lookup hits and `not_found` otherwise. It is never
+`unchecked`.
 
 Degenerate input (`""`, `"N/A"`, prose) falls to rule 4 and counts as
 `not_found`. That is the right default, since a suggestion that does not
@@ -204,6 +229,76 @@ model's performance rather than flattering it, which is why the conjunction
 is still the right call. It is a known distortion rather than a hidden one,
 and section 5 tests both mislabel directions so the behaviour is pinned
 rather than incidental.
+
+
+Both files are committed gzipped. ICD-10-CM dominates at roughly 1 to 2 MB
+compressed for about 74,000 codes; HCPCS Level II is far smaller, on the
+order of thousands of codes. Vendoring rather than downloading at build time
+keeps the test path
+fully offline and deterministic. Note the precise claim: `ci.yml` already
+installs from PyPI, so CI is not network-free overall. What vendoring buys
+is that no metric-bearing lookup depends on a live CMS endpoint.
+
+Each loader verifies its file against the matching pin (`ICD10_SHA256`,
+`HCPCS_SHA256`) and raises if it does not match. This makes the integrity
+boundary executable rather than a comment. It is the same lesson as the LLM
+cache key: the vocabulary versions are part of any metric computed on top of
+them, so if either code list silently changes between two P2-4 benchmark
+runs, the verified rate moves for reasons that have nothing to do with the
+model under test. `VOCAB_VERSION` names **both** releases and is carried on
+every `CodingOutput`, so any stored result is traceable to the exact pair of
+vocabularies that produced it. A single combined string is enough only if it is
+maintained as one: **bump `VOCAB_VERSION` on any change to either pin.**
+That is an obligation on this repo, not a property of the releases, which
+move on different cadences (ICD-10-CM annually with the fiscal year, HCPCS
+Level II quarterly). Two pins behind one version string is fine; two pins
+behind a stale version string silently breaks traceability.
+
+**The pin is the sha256 of the decompressed content, not of the gzip
+bytes.** gzip output is not byte-stable across tools and platforms, since
+the header carries an mtime and an OS byte, so pinning the compressed bytes
+would let a harmless re-compression break the integrity gate while the code
+list is completely unchanged. That would be a false alarm on the one
+mechanism that is supposed to be trustworthy.
+
+**`.gitignore` requires an explicit exception, and this is a blocker, not a
+detail.** `.gitignore` lines 17 and 18 are `data/*` followed by
+`!data/.gitkeep`. Because `data/*` excludes the `data/vocab` directory
+itself, git never descends into it, so a negation naming a file inside it
+cannot re-include the file. The directory must be re-included first:
+
+```gitignore
+# Public-domain reference vocabulary, not clinical data (see P2-3 spec)
+!data/vocab/
+!data/vocab/**
+```
+
+**Append this after line 18, not before `data/*`.** Order is not cosmetic
+here: negations placed above the `data/*` line are overridden by it and the
+file stays ignored, failing exactly as silently as having no rule at all.
+`!data/vocab/` is the line that does the work, since it re-includes the
+directory so git will descend into it; `!data/vocab/**` is belt and braces
+and does nothing on its own.
+
+Without this the vendored files silently never get committed, the loaders
+raise in CI, and the natural fix is to download at build time, which
+reintroduces exactly the non-determinism this design exists to prevent. The
+existing rule is written to keep clinical data out of the repository; the
+ICD-10-CM and HCPCS Level II code lists are public-domain reference tables
+containing no patient information, so the exception is consistent with the
+rule's intent rather than a weakening of it.
+
+`normalize` is load-bearing and easy to overlook. CMS stores ICD-10-CM codes
+without the decimal point (`E119`), while models emit the dotted display
+form (`E11.9`). Normalization strips whitespace, uppercases, and removes the
+dot on both sides of the comparison. Without it every real ICD-10 code would
+be reported as a hallucination and the metric would be exactly inverted.
+HCPCS Level II codes carry no decimal, so for them normalization is only the
+strip-and-uppercase, but the same function is used on both paths so there is
+one definition of a lookup key rather than two.
+
+`lru_cache` keeps each parse to once per process rather than once per
+request, and the two loaders cache independently.
 
 ### 1a. What `not_found` actually measures, and its floor
 
@@ -247,66 +342,6 @@ as much as `9999F` or `0001T`. This is now the **only** exemption channel,
 since vendoring HCPCS eliminated the other one, and it is irreducible
 without a licensed CPT vocabulary. Section 2a's denominator is what keeps
 the exclusion explicit rather than implied.
-
-The file is committed gzipped, roughly 1 to 2 MB compressed for about 74,000
-codes. Vendoring rather than downloading at build time keeps the test path
-fully offline and deterministic. Note the precise claim: `ci.yml` already
-installs from PyPI, so CI is not network-free overall. What vendoring buys
-is that no metric-bearing lookup depends on a live CMS endpoint.
-
-Each loader verifies its file against the matching pin (`ICD10_SHA256`,
-`HCPCS_SHA256`) and raises if it does not match. This makes the integrity
-boundary executable rather than a comment. It is the same lesson as the LLM
-cache key: the vocabulary versions are part of any metric computed on top of
-them, so if either code list silently changes between two P2-4 benchmark
-runs, the verified rate moves for reasons that have nothing to do with the
-model under test. `VOCAB_VERSION` names **both** releases and is carried on
-every `CodingOutput`, so any stored result is traceable to the exact pair of
-vocabularies that produced it. A single combined string is enough because
-the two are always bumped and pinned together.
-
-**The pin is the sha256 of the decompressed content, not of the gzip
-bytes.** gzip output is not byte-stable across tools and platforms, since
-the header carries an mtime and an OS byte, so pinning the compressed bytes
-would let a harmless re-compression break the integrity gate while the code
-list is completely unchanged. That would be a false alarm on the one
-mechanism that is supposed to be trustworthy.
-
-**`.gitignore` requires an explicit exception, and this is a blocker, not a
-detail.** `.gitignore` lines 17 and 18 are `data/*` followed by
-`!data/.gitkeep`. Because `data/*` excludes the `data/vocab` directory
-itself, git never descends into it, so a negation naming a file inside it
-cannot re-include the file. The directory must be re-included first:
-
-```gitignore
-# Public-domain reference vocabulary, not clinical data (see P2-3 spec)
-!data/vocab/
-!data/vocab/**
-```
-
-**Append this after line 18, not before `data/*`.** Order is not cosmetic
-here: negations placed above the `data/*` line are overridden by it and the
-file stays ignored, failing exactly as silently as having no rule at all.
-`!data/vocab/` is the line that does the work, since it re-includes the
-directory so git will descend into it; `!data/vocab/**` is belt and braces
-and does nothing on its own.
-
-Without this the vendored files silently never get committed, the loaders
-raise in CI, and the natural fix is to download at build time, which
-reintroduces exactly the non-determinism this design exists to prevent. The
-existing rule is written to keep clinical data out of the repository; an
-ICD-10-CM code list is a public-domain reference table containing no patient
-information, so the exception is consistent with the rule's intent rather
-than a weakening of it.
-
-`normalize` is load-bearing and easy to overlook. CMS stores codes without
-the decimal point (`E119`), while models emit the dotted display form
-(`E11.9`). Normalization strips whitespace, uppercases, and removes the dot
-on both sides of the comparison. Without it every real code would be
-reported as a hallucination and the metric would be exactly inverted.
-
-`lru_cache` keeps the roughly 74,000 line parse to once per process rather
-than once per request.
 
 ### 2. Schema (`shared/schemas.py`)
 
@@ -730,16 +765,31 @@ Cases specific to this task, which carry the real weight:
 - `classify` covers every branch of the four-rule algorithm: `verified` for
   a real ICD-10 code and for a real HCPCS code, each regardless of the
   declared system; `not_found` for a fabricated ICD-10-shaped code declared
-  `CPT`; `not_found` for a real CPT code declared `ICD-10`; `unchecked` only
-  when shape and declared system both say CPT; and `not_found` for an
-  unrecognised `system` value. These are the unit-level counterparts of the
-  agent tests above, and they belong here because `classify` is the function
-  P2-4 will also call.
+  `CPT`; `not_found` for a real CPT code declared `ICD-10`; and `unchecked`
+  only when shape and declared system both say CPT. These are the unit-level
+  counterparts of the agent tests above, and they belong here because
+  `classify` is the function P2-4 will also call.
+- For an **unrecognised** `system` value, `classify` returns `verified` when
+  the code is in either vendored set and `not_found` only when it is in
+  neither. The `not_found` case must use a code absent from both
+  vocabularies. Asserting `not_found` for an unrecognised system with a real
+  code would pin the opposite of the intended behaviour, since rules 1 and 2
+  ignore the label entirely.
+- A CPT-shaped code declared `"HCPCS"` returns `not_found`, not `unchecked`.
+  This is the other half of rule 3's label guard, and only the ICD-10
+  mislabel direction is covered otherwise.
 - **A fabricated ICD-10-shaped code declared `"HCPCS"` returns `not_found`.**
   This is the specific hole an earlier draft opened with a shape-based HCPCS
   rule, and the reason HCPCS is vendored rather than shape-matched. Use a
   code shaped like a normalized real one (letter plus four digits, e.g.
   `M9999`) so the test would actually fail under the rejected design.
+
+Every hard-coded code in these tests, the real ones and the fabricated ones
+alike, must be confirmed present or absent against the **pinned** releases
+at implementation time. `M99` is a populated ICD-10-CM category, so a
+plausible-looking fabrication can turn out to be real, and a test asserting
+`not_found` on a genuine code would pin the wrong behaviour while looking
+correct.
 - `classify` returns `not_found` for degenerate input (`""`, `"N/A"`), so
   the documented behaviour in section 1 is pinned rather than incidental.
 - `verified_rate` returns the pooled ratio for non-zero denominators, and
