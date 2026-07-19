@@ -178,3 +178,33 @@ def test_model_cannot_set_vocabulary_version(monkeypatch):
     _patch(monkeypatch, json.dumps({
         "codes": [], "confidence": 0.5, "vocabulary_version": "attacker"}))
     assert coding_agent.run(INPUT).vocabulary_version == vocab.VOCAB_VERSION
+
+
+# ---------- eligibility flag degradation ----------
+
+def test_unsubstantiated_eligibility_flag_degrades_without_losing_others(
+        monkeypatch):
+    """The second half is the point: it is the regression test against
+    reintroducing whole-output rejection and its sampling bias. A
+    model_validator would have discarded the good code alongside the bad
+    flag, and the loss would have looked like an ordinary parse failure."""
+    _patch(monkeypatch, json.dumps({"codes": [
+        {"system": "ICD-10", "code": "E11.9", "description": "d",
+         "eligibility_flag": True, "eligibility_reason": "   "},
+        {"system": "ICD-10", "code": "I10", "description": "d"},
+    ], "confidence": 0.8}))
+    out = coding_agent.run(INPUT)
+    assert out.codes[0].eligibility_flag is False
+    assert len(out.codes) == 2
+    assert out.codes[1].vocabulary_status == "verified"
+
+
+def test_eligibility_flag_with_null_reason_degrades(monkeypatch):
+    _patch(monkeypatch, _one("ICD-10", "E11.9", eligibility_flag=True))
+    assert coding_agent.run(INPUT).codes[0].eligibility_flag is False
+
+
+def test_substantiated_eligibility_flag_is_preserved(monkeypatch):
+    _patch(monkeypatch, _one("ICD-10", "E11.9", eligibility_flag=True,
+                             eligibility_reason="Commonly requires review"))
+    assert coding_agent.run(INPUT).codes[0].eligibility_flag is True

@@ -58,12 +58,21 @@ def _enrich(payload: ModelCodingPayload) -> CodingOutput:
         # through vocab.normalize: it strips the dot and would destroy the
         # display form this line exists to preserve.
         code = suggestion.code.strip().upper()
+        flag = suggestion.eligibility_flag
+        reason = suggestion.eligibility_reason
+        if flag and not (reason or "").strip():
+            # Degrade THIS suggestion only. Rejecting the whole payload
+            # would discard every correctly validated code alongside it and
+            # bias any rate computed over successful runs, while looking
+            # from the outside like an ordinary parse failure.
+            flag = False
+            reason = None   # do not leave a blank reason on a cleared flag
         codes.append(CodeSuggestion(
             system=suggestion.system,
             code=code,
             description=suggestion.description,
-            eligibility_flag=suggestion.eligibility_flag,
-            eligibility_reason=suggestion.eligibility_reason,
+            eligibility_flag=flag,
+            eligibility_reason=reason,
             vocabulary_status=vocab.classify(suggestion.system, code),
         ))
     return CodingOutput(
