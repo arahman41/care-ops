@@ -7,7 +7,7 @@ free text, and every artifact carries a confidence score in [0, 1].
 from __future__ import annotations
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 # ---------- Layer 1: SOAP note ----------
@@ -73,17 +73,68 @@ class CareGapOutput(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
-class CodeSuggestion(BaseModel):
-    system: Literal["ICD-10", "CPT"]
+class ModelCodeSuggestion(BaseModel):
+    """One code as the MODEL is allowed to state it.
+
+    Deliberately carries no vocabulary_status. Model output is parsed into
+    this, never into CodeSuggestion, so a model emitting
+    vocabulary_status="verified" on a fabricated code has the key silently
+    dropped by pydantic's extra="ignore" default. The model cannot certify
+    its own hallucinations because it has no channel to make the claim.
+
+    eligibility_flag means: this code is commonly subject to payer coverage
+    or medical-necessity review, OR the note's documentation may not
+    support it. Both are assessable from a note alone. Whether a specific
+    patient's plan covers a service is NOT assessable here, and this agent,
+    which receives no payer, plan, or benefits data, does not claim to
+    answer it. When the flag is true, eligibility_reason is required; the
+    agent degrades an unsubstantiated flag rather than rejecting the whole
+    payload (see services/agent_coding/agent.py::_enrich).
+    """
+    system: Literal["ICD-10", "CPT", "HCPCS"]
     code: str
     description: str
     eligibility_flag: bool = False
+    eligibility_reason: str | None = None
+
+
+class ModelCodingPayload(BaseModel):
+    """The whole model response, before the agent enriches it."""
+    codes: list[ModelCodeSuggestion]
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class CodeSuggestion(ModelCodeSuggestion):
+    """One code as the AGENT returns it, with the status it computed.
+
+    vocabulary_status is set by shared/vocab.py::classify, never by the
+    model. "unchecked" means the code both looks like CPT and was declared
+    CPT, CPT being the one system whose vocabulary cannot be vendored. It is
+    not a synonym for "CPT": a real CPT code mislabelled ICD-10 lands in
+    "not_found" instead.
+    """
+    vocabulary_status: Literal["verified", "not_found", "unchecked"]
 
 
 class CodingOutput(BaseModel):
     agent_name: Literal["coding"] = "coding"
     codes: list[CodeSuggestion]
     confidence: float = Field(ge=0.0, le=1.0)
+    # Names both vendored CMS releases, so a stored result is traceable to
+    # the exact pair of vocabularies that produced it.
+    vocabulary_version: str
+
+    @computed_field
+    @property
+    def verified_count(self) -> int:
+        return sum(1 for c in self.codes
+                   if c.vocabulary_status == "verified")
+
+    @computed_field
+    @property
+    def not_found_count(self) -> int:
+        return sum(1 for c in self.codes
+                   if c.vocabulary_status == "not_found")
 
 
 # ---------- Orchestrator response ----------

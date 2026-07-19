@@ -110,10 +110,32 @@ parsing. `grade` is nullable for ungraded sources.
 
 Coding (`CodingOutput`):
 ```json
-{ "agent_name": "coding",
-  "codes": [{"system": "ICD-10", "code": "", "description": "", "eligibility_flag": false}],
-  "confidence": 0.0 }
+{
+  "agent_name": "coding",
+  "codes": [
+    {
+      "system": "ICD-10",
+      "code": "E11.9",
+      "description": "Type 2 diabetes mellitus without complications",
+      "vocabulary_status": "verified",
+      "eligibility_flag": false,
+      "eligibility_reason": null
+    }
+  ],
+  "confidence": 0.0,
+  "vocabulary_version": "ICD-10-CM FY2026 (2026-04-01) + HCPCS Level II 2026Q3",
+  "verified_count": 1,
+  "not_found_count": 0
+}
 ```
+
+`system` accepts `"ICD-10"`, `"CPT"`, or `"HCPCS"`. `vocabulary_status` is
+computed by the agent, never supplied by the model, and is one of
+`verified`, `not_found`, or `unchecked`; `unchecked` means the code both
+looks like CPT and was declared CPT, since CPT is licensed and cannot be
+checked against a vendored vocabulary. `verified_count` and
+`not_found_count` are computed fields that exclude `unchecked` from both,
+per the P2-3 spec's section 2a definition of the verified rate.
 
 ---
 

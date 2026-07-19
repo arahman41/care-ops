@@ -6,6 +6,7 @@ COPY requirements.txt requirements.txt
 COPY services/agent_coding/requirements.txt services/agent_coding/requirements.txt
 RUN pip install --no-cache-dir -r services/agent_coding/requirements.txt
 COPY shared/ shared/
+COPY data/vocab/ data/vocab/
 COPY services/agent_coding/ services/agent_coding/
 EXPOSE 8000
 CMD ["uvicorn", "services.agent_coding.app:app", "--host", "0.0.0.0", "--port", "8000"]

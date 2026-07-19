@@ -17,6 +17,13 @@ htmlcov/
 data/*
 !data/.gitkeep
 
+# Public-domain CMS reference vocabularies, not clinical data (see P2-3 spec).
+# The directory must be re-included first: data/* excludes data/vocab itself,
+# and git will not descend into an excluded directory, so a negation naming a
+# file inside it cannot re-include the file.
+!data/vocab/
+!data/vocab/**
+
 # Models and artifacts
 *.pt
 *.bin
