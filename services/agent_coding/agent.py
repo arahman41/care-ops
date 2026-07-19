@@ -24,11 +24,20 @@ from shared.schemas import (
 _MAX_TOKENS = 4000
 
 _SYSTEM = (
-    "You suggest likely ICD-10 and CPT codes for a SOAP note and flag "
-    "possible eligibility mismatches. Return only JSON: "
+    "You suggest likely ICD-10, CPT, and HCPCS Level II codes for a SOAP "
+    "note and flag codes that may face coverage review. Return only JSON: "
     '{"codes": [{"system": "ICD-10", "code": "", "description": "", '
-    '"eligibility_flag": false}], "confidence": 0.0}. These are suggestions '
-    "for human review, not confirmed codes. Confidence is calibrated in [0, 1]."
+    '"eligibility_flag": false, "eligibility_reason": null}], '
+    '"confidence": 0.0}. '
+    "system must be exactly one of \"ICD-10\", \"CPT\", or \"HCPCS\". "
+    "Write ICD-10 codes in conventional dotted form, for example E11.9. "
+    "Set eligibility_flag true only when the code is commonly subject to "
+    "payer coverage or medical-necessity review, or the note's "
+    "documentation may not support it; when you do, eligibility_reason is "
+    "REQUIRED and must say why. You cannot determine whether a specific "
+    "patient's plan covers a service, and must not claim to. "
+    "These are suggestions for human review, not confirmed codes. "
+    "Confidence is your calibrated certainty in [0, 1]."
 )
 
 
