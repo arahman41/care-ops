@@ -1,6 +1,6 @@
 # P2-4: Coding Configuration Routing Benchmark
 
-**Status:** design, revised after review round 2
+**Status:** design, approved at review round 5
 **Roadmap task:** P2-4, as re-scoped in commit `f1cb3ab`
 **Depends on:** P2-3 (merged, `7fdd02f`), P0-5 held-out split
 
@@ -26,7 +26,7 @@ Measured per arm:
 | Metric | Definition | Denominator |
 |---|---|---|
 | Verified rate | `vocab.verified_rate(verified, not_found)` | checkable codes, deduplicated |
-| Not-found rate | `1 - verified_rate`, and `None` when `verified_rate` is `None` | checkable codes, deduplicated |
+| Not-found rate | `100 - 100 * verified_rate`, and `None` when `verified_rate` is `None` | checkable codes, deduplicated |
 | Pessimistic verified rate | `unchecked` counted as not verified | all codes, deduplicated |
 | Unchecked share | codes classified `unchecked` | all codes, deduplicated |
 | Codes per note | suggested codes after dedup | notes |
@@ -125,6 +125,13 @@ Two thresholds are deliberately **outside** this convention because they are
 dimensionless ratios, and are written as such in their own formulas: volume
 divergence (`0.25`) and intersection loss (`0.90`).
 
+`vocab.verified_rate` returns a **proportion**, so every rate entering this
+spec is multiplied by 100 at the boundary. Section 1's table writes the
+not-found rate as `100 - 100 * verified_rate` for that reason. Getting this
+wrong is visible rather than silent (a per-arm not-found rate of `-93.0`), but
+note that a constant offset cancels in `d`, so the headline difference would
+survive while `upper(X)` went negative and the floor guard became unfireable.
+
 The derivation of the unchecked guard below divides by `v`. **That `v` is a
 proportion in [0, 1], not points.** Writing `delta / v` with `v` in points
 yields `1.5 / 94.0 = 0.016` points, a threshold that trips on essentially any
@@ -181,7 +188,7 @@ quality winner is declared.
 | Unchecked divergence | `abs(unchecked_share(A) - unchecked_share(B)) > 1.6 pts` | The verified rates are computed over structurally different subsets. Calibrated so a tripped guard corresponds to about delta of movement in the pessimistic rate, per below. |
 | Volume divergence | `abs(cpn_A - cpn_B) / ((cpn_A + cpn_B) / 2) > 0.25` | Reflects verbosity, not quality (degeneracy 1). Denominator is the **mean of the two arms**, so the guard is symmetric; relative to A and relative to B give different answers near the threshold. |
 | Floor divergence | `max_possible_floor_gap > abs(d)` | The gap is a labeling or training-cutoff artifact, not coding quality (section 5) |
-| Intersection loss | analysis set below 90% of 120 notes | Section 8 |
+| Intersection loss | analysis set below 90% of 120 notes | Section 8. This one **voids the run** rather than returning Inconclusive: below that threshold there is no result to report, not an unresolved one. |
 
 **Unchecked threshold derivation.** Since
 `pessimistic = standard * (1 - unchecked_share)`, a share gap `g` moves the
@@ -409,9 +416,16 @@ Recomputing a pre-registered margin from data, even train data, also weakens
 the pre-registration that is the point of section 2.
 
 **The pilot reports `v` as a check, not as an input.** If the pilot's `v`
-differs from the 0.94 projection by more than 5 points, that is surfaced to a
-human before the full run, as information about whether delta is sized
-sensibly. It does not automatically change any threshold.
+differs from the 0.94 projection by more than 5 points **in either direction,
+or reaches 0.98 in absolute terms**, that is surfaced to a human before the
+full run as information about whether delta is sized sensibly. It does not
+automatically change any threshold.
+
+The absolute trigger is there because the escalation is otherwise symmetric
+while the risk is not. A high `v` near 0.99 leaves a not-found rate under 1.5
+points, so delta exceeds the entire estimand, the Equivalent branch becomes
+guaranteed, and Difference becomes unreachable. A `v` of 0.985 sits inside the
+5-point band and would not otherwise escalate.
 
 ---
 
@@ -563,12 +577,16 @@ equivalence_attainable, latency_notes_contributing
 
 `n_analysis` is the intersection size, without which the intersection-loss
 guard cannot be audited and `n_notes` is ambiguous between "notes this arm
-parsed" and "the analysis set". `delta_margin` is the value of delta actually
-applied, after the pilot recomputation described in section 4.
+parsed" and "the analysis set". `delta_margin` is the value of delta applied,
+which is the pre-registered constant 1.5. It is recorded rather than assumed
+so an artifact states the margin it was judged against. **There is no pilot
+recomputation of delta**; section 4 forbids it.
 
 Everything in this block plus each arm's section 1 metrics is what lands in
 `eval_runs.metrics`; the per-note token, latency, and verdict detail stays in
-the artifact only.
+the artifact only. `eval_runs.n_examples` is set to `n_analysis`, the
+intersection size, not the arm's own parsed count, so the column means the
+same thing for both rows.
 
 Section 2 operates on the CI of the **difference**, so without this the
 artifact cannot be audited against the pre-registered rule, and a reader
