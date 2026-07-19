@@ -26,7 +26,7 @@ Measured per arm:
 | Metric | Definition | Denominator |
 |---|---|---|
 | Verified rate | `vocab.verified_rate(verified, not_found)` | checkable codes, deduplicated |
-| Not-found rate | `1 - verified_rate` | checkable codes, deduplicated |
+| Not-found rate | `1 - verified_rate`, and `None` when `verified_rate` is `None` | checkable codes, deduplicated |
 | Pessimistic verified rate | `unchecked` counted as not verified | all codes, deduplicated |
 | Unchecked share | codes classified `unchecked` | all codes, deduplicated |
 | Codes per note | suggested codes after dedup | notes |
@@ -51,16 +51,39 @@ it is **right for the note**.
 
 ### Deduplication, and the two properties that must not be used
 
-All counting deduplicates on **`normalize(code)` alone**, not on
-`(system, normalize(code))`. Including `system` would contradict
+All counting deduplicates on **`normalize(code)` alone, within a note**, not
+on `(system, normalize(code))`. Including `system` would contradict
 `vocab.classify`, whose rules 1 and 2 deliberately ignore the declared system,
 and would count the same code under two labels twice. Since label drift is
 arm-specific and is exactly cause 3 of the floor, a system-keyed dedup would
 partially reintroduce the degeneracy dedup exists to remove. Agreement uses
 the same key, for the same reason.
 
+**Dedup is per note, never global across the analysis set.** Global dedup
+would collapse a common code appearing in 40 notes into one observation and
+move the headline rate substantially, and it would break the note-level
+bootstrap, which requires a note drawn twice to contribute twice.
+
 Every `system` label seen for a code is retained alongside it, because cause 3
 attribution needs them.
+
+**Conflicting statuses resolve to `not_found`.** Deduplication can merge
+occurrences that `classify` gave different statuses, and the resolution rule is
+the single highest-leverage choice in the metric, so it is pinned rather than
+left to the implementer.
+
+A conflict is possible only between `not_found` and `unchecked`. `verified`
+cannot conflict, because rules 1 and 2 ignore the label, so a code present in
+either vocabulary verifies under every label it is given. The live case is a
+code absent from both vocabularies, emitted once labeled `CPT` with CPT shape
+(rule 3, `unchecked`) and once labeled `ICD-10` (`not_found`).
+
+`not_found` wins. `unchecked` is an exemption from the denominator, and
+letting a model earn that exemption by emitting the same code a second time
+under a `CPT` label would reward precisely the label drift that degeneracy 2
+and floor cause 3 exist to expose. Resolving the other way would remove the
+code from scoring entirely, which is the more favorable treatment and the
+wrong default.
 
 > **`CodingOutput.verified_count` and `CodingOutput.not_found_count` are
 > forbidden in this benchmark.** They count list entries un-deduplicated
@@ -89,6 +112,19 @@ unverifiable-code errors than the other.
 relative difference at the anticipated base rate. The difference tested is
 `not_found_rate(A) - not_found_rate(B)`, which is the negation of the verified
 rate difference and identical in magnitude.
+
+### Scale convention, which is load-bearing
+
+**Every rate, threshold, point estimate, and interval endpoint in this spec is
+expressed in percentage points, on a 0 to 100 scale.** Section 4's
+`delta_b` formula yields a proportion and is **multiplied by 100** before any
+comparison in this section.
+
+This is stated because omitting it degenerates the rule completely. A CI of
+about `±0.03` on the proportion scale, compared against `(-1.5, +1.5)` read as
+proportions, lies inside the margin always, so **every run would return
+Equivalent** regardless of the data. Since this section insists the literal
+wording is the rule, the scale has to be part of the wording.
 
 ### Reachability is checked before the run, not assumed
 
@@ -131,16 +167,51 @@ quality winner is declared.
 
 | Guard | Threshold | Why |
 |---|---|---|
-| Unchecked divergence | `abs(unchecked_share(A) - unchecked_share(B)) > 3.0 pts` | The verified rates are computed over structurally different subsets. Calibrated against delta, not chosen round: since `pessimistic = standard * (1 - unchecked_share)`, a 3-point share gap already moves the pessimistic rate by about delta. |
-| Volume divergence | codes-per-note differ by more than 25% relative | Reflects verbosity, not quality (degeneracy 1) |
-| Floor divergence | `abs(floor(A) - floor(B))` exceeds `abs(d)` | The gap is a labeling or training-cutoff artifact, not coding quality (section 5) |
+| Unchecked divergence | `abs(unchecked_share(A) - unchecked_share(B)) > 1.6 pts` | The verified rates are computed over structurally different subsets. Calibrated so a tripped guard corresponds to about delta of movement in the pessimistic rate, per below. |
+| Volume divergence | `abs(cpn_A - cpn_B) / ((cpn_A + cpn_B) / 2) > 0.25` | Reflects verbosity, not quality (degeneracy 1). Denominator is the **mean of the two arms**, so the guard is symmetric; relative to A and relative to B give different answers near the threshold. |
+| Floor divergence | `max_possible_floor_gap > abs(d)` | The gap is a labeling or training-cutoff artifact, not coding quality (section 5) |
 | Intersection loss | analysis set below 90% of 120 notes | Section 8 |
+
+**Unchecked threshold derivation.** Since
+`pessimistic = standard * (1 - unchecked_share)`, a share gap `g` moves the
+pessimistic rate by about `v * g` where `v` is the verified rate. Setting
+`v * g = delta` at `v` near 0.94 gives `g = 1.5 / 0.94`, about **1.6 points**.
+An earlier draft used 3.0 points and claimed it was calibrated this way; it is
+not, it permits a pessimistic-rate gap of nearly twice delta, and it errs in
+the direction that lets a structural artifact be reported as a quality
+difference.
+
+**Floor divergence is a band against a scalar.** Floors are reported per arm as
+bounds (section 5), so `abs(floor(A) - floor(B))` is not well defined. The
+guard uses the **maximum possible gap** consistent with both bands:
+
+```
+max_possible_floor_gap = max( upper(A) - lower(B), upper(B) - lower(A), 0 )
+```
+
+This is the conservative choice, firing more readily, which is the correct
+direction for a guard whose purpose is to prevent over-claiming.
 
 If the standard and pessimistic framings disagree on which arm is better, that
 disagreement is reported as the finding regardless of branch.
 
-Whatever the outcome, `shared/llm.py` records the winning **configuration**
-plus a one-line note.
+### Terminal state when there is no price table
+
+The Equivalent and Inconclusive branches both route on cost, and section 8
+makes `governance/pricing.json` a required input that does not exist in the
+repo today.
+
+**If the price table is absent, that is a terminal state: `ROUTING["coding"]`
+is left unchanged, the reason is recorded in the artifact, and no winner is
+named.** An earlier draft closed this section with "whatever the outcome,
+`shared/llm.py` records the winning configuration", which under a missing
+price table obliges an engineer to name a winner anyway, and the nearest
+available signal is raw token counts. That is exactly the inversion section 8
+exists to prevent, since the xhigh arm emits more reasoning tokens while being
+cheaper per token.
+
+When a winner **is** named, `shared/llm.py` records the winning
+**configuration** plus a one-line note.
 
 ---
 
@@ -245,6 +316,25 @@ both arms emit identical code sets, and BCa reads an atom as bias.
 z0 = Phi^-1( ( #{delta_b < d} + 0.5 * #{delta_b == d} ) / B )
 ```
 
+**The acceleration is pinned too**, because naming `0/0` as a defect and then
+fixing only `z0` leaves the diagnosed failure open. Leave-one-note-out
+jackknife over the analysis set, matching the note-level resampling:
+
+```
+a = sum(u_i^3) / ( 6 * ( sum(u_i^2) )^1.5 )
+```
+
+where `u_i` is the mean of the jackknife replicates minus the `i`-th
+replicate. **When the denominator is zero, `a` is set to 0 and the artifact
+records that it happened.** Silently setting `a = 0` without recording it
+downgrades BCa to bias-corrected percentile with nothing failing, which is the
+same class of silent estimator swap this section exists to prevent.
+
+**BCa is hand-rolled, not delegated.** `scipy.stats.bootstrap(method="BCa")`
+computes `z0` with the naive strict-`<` count, so it does not implement the
+convention above. An engineer who hand-rolls `z0` and delegates `a` to scipy
+produces a hybrid neither this section nor scipy's documentation describes.
+
 Replicates drawing a zero denominator get `None` from `verified_rate`, never
 `0.0`, and are handled explicitly rather than passed to a percentile call.
 Seed and replicate count are recorded; without them the interval is not
@@ -263,8 +353,15 @@ pilot and reported with the interval actually obtained.
 The illustrative figures used above (verified rate about 0.94, about 18
 not-found events per arm, about 2.5 checkable codes per note) come from P2-3's
 two-note live run and are **projections, not measurements**. The pilot
-replaces them. No threshold in this spec other than delta is derived from
-them.
+replaces them.
+
+**Two thresholds are derived from the projected verified rate and are
+recalculated once the pilot measures it:** delta itself (section 2, sized as a
+25% relative difference on the projected base rate) and the unchecked
+divergence guard (section 2, `delta / v`). Both are recomputed from the
+pilot's `v` and the recomputed values are recorded in the artifact **before**
+the full run, so neither is tuned after seeing held-out outcomes. Every other
+threshold in this spec is independent of the projections.
 
 ---
 
@@ -293,7 +390,9 @@ from** FY2026, and ICD-10-CM churn is overwhelmingly additive.
 to matter.** That set size is knowable from one diff and must be measured and
 recorded first. If it is in the tens against roughly 18 not-found events per
 arm, the vendoring cannot move the attribution and is dropped, leaving cause 2
-inside the residual with cause 1 and the floor reported as the wider band.
+inside the residual with cause 1 and the floor reported as the wider band. In
+that case `vocab_floor_version` is recorded as the string `"none"`, not left
+absent, so an artifact always states which floor pin produced its attribution.
 
 Note also that one prior pin decides FY2025 only. A code retired before FY2025
 still misattributes to cause 1, so even the cleared case is a partial fix and
@@ -318,7 +417,8 @@ never reads. The floor pin lives only in `vocab_floor_version`.
 
 ### 5b. Cause 3 is an upper bound
 
-`_looks_like_cpt` is a shape regex (`vocab.py:48`) and CPT is not vendored, so
+`_looks_like_cpt` (`vocab.py:91`) is a shape regex over `_CPT_RE`
+(`vocab.py:48`) and CPT is not vendored, so
 a matching code cannot be known to be real; a fabricated five-digit number
 labeled "ICD-10" satisfies it identically. Classifying such codes as cause 3
 rather than cause 1 deflates the fabrication estimate in the flattering
@@ -335,10 +435,11 @@ _CODE_SHAPE_RE = re.compile(r"^[A-Z0-9]{3,7}$")
 _PLACEHOLDERS = frozenset({"NONE", "UNKNOWN", "TBD", "NA", "NIL", "PENDING"})
 ```
 
-`_PLACEHOLDERS` is required because `normalize` strips punctuation and
-uppercases, so `NONE`, `UNKNOWN`, and `TBD` all **pass** a bare shape test and
-would land in the residual as cause 1. Only punctuated forms like `N/A` are
-caught by shape alone.
+`_PLACEHOLDERS` is required because `normalize` uppercases and strips **the
+decimal point only** (`vocab.py:60`), not punctuation generally. So `NONE`,
+`UNKNOWN`, and `TBD` survive as bare alphanumerics, **pass** a shape test, and
+would land in the residual as cause 1, inflating the fabrication estimate.
+Forms retaining punctuation, such as `N/A`, are caught by shape alone.
 
 ### 5d. The floor is arm-specific
 
@@ -399,10 +500,20 @@ counts and latencies, `floor_cause_counts`, `floor_adjudicated`,
 **Plus a top-level comparison block, which an earlier draft omitted entirely:**
 
 ```
-delta_point, delta_ci95, delta_margin, branch_fired, guards_tripped,
-rho_observed, design_effect, bootstrap_seed, bootstrap_replicates,
-equivalence_attainable
+n_analysis, delta_point, delta_ci95, delta_margin, branch_fired,
+guards_tripped, rho_observed, design_effect, bootstrap_seed,
+bootstrap_replicates, bca_acceleration, bca_acceleration_degenerate,
+equivalence_attainable, latency_notes_contributing
 ```
+
+`n_analysis` is the intersection size, without which the intersection-loss
+guard cannot be audited and `n_notes` is ambiguous between "notes this arm
+parsed" and "the analysis set". `delta_margin` is the value of delta actually
+applied, after the pilot recomputation described in section 4.
+
+Everything in this block plus each arm's section 1 metrics is what lands in
+`eval_runs.metrics`; the per-note token, latency, and verdict detail stays in
+the artifact only.
 
 Section 2 operates on the CI of the **difference**, so without this the
 artifact cannot be audited against the pre-registered rule, and a reader
@@ -461,8 +572,13 @@ plausible result, agreeing with the prior, with nothing looking wrong.
        model: str            # resp.model, what actually ran
        input_tokens: int
        output_tokens: int
-       stop_reason: str
+       stop_reason: str      # never "max_tokens"; call_detailed raises first
    ```
+
+   `stop_reason` cannot hold `"max_tokens"`, because `TruncatedResponseError`
+   is raised before the result is constructed. The field is kept for the other
+   values and the comment prevents a reader concluding truncation can be
+   detected by inspecting it.
 
    `call()` becomes a thin wrapper returning `.text`, so **no existing caller
    changes**. This is required, not cosmetic: `call()` returns `str` and
@@ -546,6 +662,24 @@ at line 25 and the arms differ in model. The fix is kept for the real reasons:
 So `version = f"{effort}|{hash_prompt(_SYSTEM)}|max{_MAX_TOKENS}"`, per
 `structuring_eval.py:82`.
 
+### What the cache stores
+
+**A serialized `LLMResult`, not the bare response text.** On a cache hit
+`call_detailed()` never runs, so a bare-string cache loses `observed_model`,
+`input_tokens`, and `output_tokens` for every completed note. 240 calls at
+xhigh and high effort is a long run, so interruption and resume is a normal
+event, and on resume the cost inputs to the Equivalent branch would silently
+be missing for exactly the notes already paid for. The acceptance criterion
+"`observed_model` recorded per note" would be tickable while false.
+
+`structuring_eval.generate_soap` already caches
+`note.model_dump_json()` rather than raw text, so this needs no change to
+`llm_cache.Cache`.
+
+**Latency is the one field that does not survive a hit.** It is wall-clock, not
+a property of the response. Latency aggregates are therefore computed over
+cache-miss notes only, and the artifact records how many notes contributed.
+
 ### Failure policy
 
 `_MAX_TOKENS = 5000` was pinned from **Sonnet-at-xhigh** usage over two notes;
@@ -565,7 +699,13 @@ Opus at high has a different reasoning profile and may truncate, which
 
 ### Pilot
 
-**Drawn from the train split, never the held-out set.** Pilot notes would
+**Drawn from the train split, never the held-out set.** `governance/heldout.py`
+deliberately exposes no train path ("Nothing here ever returns a train or dev
+encounter"), so the pilot needs a small separate loader rather than a change to
+that module. This is not a held-out policy violation; it is the opposite of
+one. The split has 67 ACI train encounters available, so 5 is comfortable.
+
+Pilot notes would
 otherwise be held-out notes whose responses are cached and carried into the
 full run, so proceeding after seeing their outcomes would condition on partial
 outcome data from inside the analysis set, an optional-stopping violation.
@@ -594,12 +734,20 @@ the pilot shows cost is prohibitive.
 - [ ] `record_coding_run` added; `record_structuring_run` untouched
 - [ ] Phase 3 consumers verified against an all-NULL accuracy family
 - [ ] `prompt_version` folds in effort, prompt hash, `max_tokens`
-- [ ] Dedup on `normalize(code)` alone; `verified_count`/`not_found_count`
-      unused; test asserts a doubled code counts once
+- [ ] Dedup on `normalize(code)` alone, **per note**;
+      `verified_count`/`not_found_count` unused; test asserts a doubled code
+      counts once and that a `not_found`/`unchecked` conflict resolves to
+      `not_found`
+- [ ] All rates, thresholds, and interval endpoints in percentage points;
+      test asserts a proportion-scale CI cannot satisfy the Equivalent branch
 - [ ] Bootstrap uses shared indices and resamples `n = |intersection|`; test
       asserts identical arms give every replicate delta exactly 0
-- [ ] BCa with the pinned tie convention; `None` denominators handled; seed
-      and replicate count recorded
+- [ ] BCa hand-rolled with the pinned tie convention and jackknife
+      acceleration; degenerate acceleration recorded, not silently zeroed;
+      `None` denominators handled; seed and replicate count recorded
+- [ ] Cache stores a serialized `LLMResult`; test asserts `observed_model` and
+      token counts survive a cache hit
+- [ ] Missing price table is a terminal state leaving `ROUTING` unchanged
 - [ ] `|FY2025 \ FY2026|` measured and recorded; FY2025 vendored only if it
       clears, and if so with dated release, order-file trap, and member path
       specified, and `VOCAB_VERSION` unchanged
