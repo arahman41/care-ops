@@ -18,10 +18,20 @@ from shared.schemas import (
     AgentInput, CodeSuggestion, CodingOutput, ModelCodingPayload,
 )
 
-# Provisional. Task 13 of the P2-3 plan pins the real value from observed
-# usage. The library default is 1500 and this agent emits the largest output
-# of the three, so the cap is a live truncation risk rather than a formality.
-_MAX_TOKENS = 4000
+# Pinned from observed live usage (P2-3 Task 13, 2026-07-19): the largest
+# output over two real notes was 2,264 tokens, on a note carrying three
+# diagnoses plus a procedure and an injectable. Doubled and rounded up to
+# the nearest 500. The counts include xhigh reasoning tokens, which is why
+# this sits so far above the 1500 library default; neither live call was
+# truncated at the provisional 4000.
+#
+# If this value changes, P2-4's cache key must change with it. See
+# governance/llm_cache.py::cache_key, which does NOT fold in max_tokens:
+# only governance/structuring_eval.py:82 does, by folding it into
+# prompt_version. Any coding-agent caching must follow that pattern, or
+# changing this cap mid-benchmark produces silent cache HITS that blend two
+# configurations into one number.
+_MAX_TOKENS = 5000
 
 _SYSTEM = (
     "You suggest likely ICD-10, CPT, and HCPCS Level II codes for a SOAP "
