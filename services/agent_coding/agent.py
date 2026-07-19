@@ -1,17 +1,27 @@
-"""Coding/Eligibility Agent: suggest ICD-10/CPT codes, flag mismatches.
+"""Coding/Eligibility Agent: suggest codes, flag possible eligibility issues.
 
-This is the hardest component. Default routing is Sonnet 5 at xhigh
-effort. Benchmark Opus 4.8 at high on the held-out coding set and keep
-the winner. Never present a code as confirmed; these are suggestions.
+Codes are SUGGESTIONS for human review, never confirmed codes. Whether a
+code exists is decided here by lookup, not by the model: see shared/vocab.py.
 """
 from __future__ import annotations
 
-import json
 import time
 
-from shared.llm import call, ROUTING
+from pydantic import ValidationError
+
+from shared import vocab
+from shared.llm import (
+    MalformedJSONError, ROUTING, TruncatedResponseError, call, extract_json,
+)
 from shared.registry import log_decision
-from shared.schemas import AgentInput, CodingOutput
+from shared.schemas import (
+    AgentInput, CodeSuggestion, CodingOutput, ModelCodingPayload,
+)
+
+# Provisional. Task 13 of the P2-3 plan pins the real value from observed
+# usage. The library default is 1500 and this agent emits the largest output
+# of the three, so the cap is a live truncation risk rather than a formality.
+_MAX_TOKENS = 4000
 
 _SYSTEM = (
     "You suggest likely ICD-10 and CPT codes for a SOAP note and flag "
@@ -22,12 +32,76 @@ _SYSTEM = (
 )
 
 
+class CodingError(ValueError):
+    """Raised when the model's response cannot be parsed into a CodingOutput.
+
+    Carries a truncated preview of the raw output so a failure is
+    diagnosable without dumping full model output into logs.
+    """
+
+    def __init__(self, reason: str, raw: str):
+        preview = raw[:200] + ("..." if len(raw) > 200 else "")
+        super().__init__(
+            f"Coding parsing failed: {reason}. Raw output: {preview!r}")
+
+
+def _enrich(payload: ModelCodingPayload) -> CodingOutput:
+    """Turn what the model said into what the agent stands behind.
+
+    The agent never branches on `system` itself; that decision lives in
+    vocab.classify, so this file and P2-4 cannot drift apart.
+    """
+    codes = []
+    for suggestion in payload.codes:
+        # Stored in conventional dotted display form. Only the LOOKUP is
+        # normalized, and classify does that internally. Do not pass this
+        # through vocab.normalize: it strips the dot and would destroy the
+        # display form this line exists to preserve.
+        code = suggestion.code.strip().upper()
+        codes.append(CodeSuggestion(
+            system=suggestion.system,
+            code=code,
+            description=suggestion.description,
+            eligibility_flag=suggestion.eligibility_flag,
+            eligibility_reason=suggestion.eligibility_reason,
+            vocabulary_status=vocab.classify(suggestion.system, code),
+        ))
+    return CodingOutput(
+        codes=codes,
+        confidence=payload.confidence,
+        vocabulary_version=vocab.VOCAB_VERSION,
+    )
+
+
 def run(inp: AgentInput) -> CodingOutput:
     model, effort = ROUTING["coding"]
     started = time.perf_counter()
-    raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json())
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    out = CodingOutput(**json.loads(raw))
+
+    try:
+        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json(),
+                   max_tokens=_MAX_TOKENS)
+    except TruncatedResponseError as exc:
+        # raw="" because call() raises before returning any text. There is
+        # no response to preview; the reason carries the diagnosis.
+        raise CodingError(str(exc), "") from exc
+
+    try:
+        data = extract_json(raw)
+    except MalformedJSONError as exc:
+        raise CodingError(exc.reason, raw) from exc
+
+    if not isinstance(data, dict):
+        raise CodingError("JSON was not an object", raw)
+
+    try:
+        payload = ModelCodingPayload(**data)
+    except ValidationError as exc:
+        raise CodingError(
+            f"did not match the ModelCodingPayload schema ({exc})",
+            raw) from exc
+
+    out = _enrich(payload)
+
     latency_ms = int((time.perf_counter() - started) * 1000)
     log_decision(
         encounter_id=inp.encounter_id, note_id=inp.note_id,
