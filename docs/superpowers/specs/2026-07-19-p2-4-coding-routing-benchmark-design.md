@@ -115,10 +115,21 @@ rate difference and identical in magnitude.
 
 ### Scale convention, which is load-bearing
 
-**Every rate, threshold, point estimate, and interval endpoint in this spec is
-expressed in percentage points, on a 0 to 100 scale.** Section 4's
-`delta_b` formula yields a proportion and is **multiplied by 100** before any
-comparison in this section.
+**Every member of the rate family (verified, not-found, unchecked share,
+floor bounds), along with delta, `d`, and both interval endpoints, is
+expressed in percentage points, on a 0 to 100 scale.** Section 4's `delta_b`
+formula yields a proportion and is **multiplied by 100** before any comparison
+in this section.
+
+Two thresholds are deliberately **outside** this convention because they are
+dimensionless ratios, and are written as such in their own formulas: volume
+divergence (`0.25`) and intersection loss (`0.90`).
+
+The derivation of the unchecked guard below divides by `v`. **That `v` is a
+proportion in [0, 1], not points.** Writing `delta / v` with `v` in points
+yields `1.5 / 94.0 = 0.016` points, a threshold that trips on essentially any
+run and forces Inconclusive every time. This is the one place the convention
+must be broken and it is marked rather than left to be discovered.
 
 This is stated because omitting it degenerates the rule completely. A CI of
 about `±0.03` on the proportion scale, compared against `(-1.5, +1.5)` read as
@@ -189,8 +200,26 @@ guard uses the **maximum possible gap** consistent with both bands:
 max_possible_floor_gap = max( upper(A) - lower(B), upper(B) - lower(A), 0 )
 ```
 
+**The operands are defined here, since a guard whose bounds are undefined
+fires on an unknowable fraction of runs:**
+
+- `lower(X)` = auto-classified causes 3 and 4 for arm X, as a percentage of
+  that arm's checkable codes. The floor is at least this large.
+- `upper(X)` = arm X's full not-found rate. The floor cannot exceed it, since
+  every not-found code is one of the four causes.
+
+Human adjudication, if performed, narrows the band by moving cause 2 out of
+the residual; it never widens it.
+
 This is the conservative choice, firing more readily, which is the correct
 direction for a guard whose purpose is to prevent over-claiming.
+
+**The pilot reports every guard's statistic**, not just `rho`. Section 2
+checks that the Equivalent branch is reachable but nothing checks the guards
+can be jointly untripped, and with both the unchecked and floor guards
+plausibly firing, "Inconclusive, guard tripped" could be the most likely
+outcome of the entire benchmark. That would be worth knowing before the spend
+rather than after.
 
 If the standard and pessimistic framings disagree on which arm is better, that
 disagreement is reported as the finding regardless of branch.
@@ -298,8 +327,8 @@ discards the positive between-arm correlation from shared note difficulty,
 widening the interval, making it likelier to contain zero, and so likelier to
 return the branch this spec already predicts. **Test: with two identical arms,
 every replicate `delta_b` must be exactly 0.** This asserts the resampling,
-which is the thing shared indices guarantee. An earlier draft asserted the
-resulting interval collapses to a point, which BCa cannot satisfy (see below).
+which is the thing shared indices guarantee, rather than asserting a property
+of the interval method downstream of it.
 
 ### BCa tie handling
 
@@ -336,7 +365,11 @@ convention above. An engineer who hand-rolls `z0` and delegates `a` to scipy
 produces a hybrid neither this section nor scipy's documentation describes.
 
 Replicates drawing a zero denominator get `None` from `verified_rate`, never
-`0.0`, and are handled explicitly rather than passed to a percentile call.
+`0.0`. **Such replicates are dropped, and `B` in the `z0` denominator becomes
+the retained count**, not the requested 10,000, or `z0` is computed against a
+denominator that includes replicates absent from its numerator. The dropped
+count is recorded.
+
 Seed and replicate count are recorded; without them the interval is not
 reproducible.
 
@@ -355,13 +388,30 @@ not-found events per arm, about 2.5 checkable codes per note) come from P2-3's
 two-note live run and are **projections, not measurements**. The pilot
 replaces them.
 
-**Two thresholds are derived from the projected verified rate and are
-recalculated once the pilot measures it:** delta itself (section 2, sized as a
-25% relative difference on the projected base rate) and the unchecked
-divergence guard (section 2, `delta / v`). Both are recomputed from the
-pilot's `v` and the recomputed values are recorded in the artifact **before**
-the full run, so neither is tuned after seeing held-out outcomes. Every other
-threshold in this spec is independent of the projections.
+**delta and the unchecked guard are pre-registered constants and are never
+recomputed.** delta = 1.5 points, unchecked guard = 1.6 points, both fixed at
+the values section 2 derives. An earlier draft made them functions of the
+pilot's measured `v`, which was wrong twice over:
+
+1. **Noise amplification.** At 5 pilot notes and roughly 2.5 checkable codes
+   per note, about 13 codes per arm, the margin would be quantized in 1 to 2
+   point steps by single code verdicts. The chance the pilot sees zero
+   not-found codes is about `0.94^25 = 0.21` pooled across arms, and
+   **delta = 0 deletes the Equivalent branch entirely** and zeroes the
+   unchecked guard so every run trips it. A one-in-five chance of destroying
+   the decision rule before the run starts.
+2. **It contradicted section 3.** That section rejects the 15-note
+   rank-invariance check as near a coin flip at about 2 events per arm. The
+   same objection applies with more force to a 5-note pilot, except there the
+   quantity is descriptive and here it is load-bearing.
+
+Recomputing a pre-registered margin from data, even train data, also weakens
+the pre-registration that is the point of section 2.
+
+**The pilot reports `v` as a check, not as an input.** If the pilot's `v`
+differs from the 0.94 projection by more than 5 points, that is surfaced to a
+human before the full run, as information about whether delta is sized
+sensibly. It does not automatically change any threshold.
 
 ---
 
@@ -424,6 +474,11 @@ labeled "ICD-10" satisfies it identically. Classifying such codes as cause 3
 rather than cause 1 deflates the fabrication estimate in the flattering
 direction, so this is reported as an **upper bound on cause 3**, never as a
 count of real mislabeled CPT codes.
+
+**For a deduplicated code carrying several labels**, which section 1's
+conflict rule guarantees is a non-empty population, the predicate is satisfied
+if the shape matches and **any** retained label is not `CPT`. This is the
+inclusive reading, consistent with the quantity already being an upper bound.
 
 ### 5c. Cause 4 needs predicates that do not exist
 
@@ -523,9 +578,27 @@ error and is biased toward "no difference".
 Run-level: `split_digest`, `vocab_version`, `vocab_floor_version`,
 `price_table_ref`.
 
-`observed_model` is the id echoed back by the API, not the requested one,
-following `structuring_eval.py:246`. `split_digest` is carried because an
-artifact that does not name its split is unmoored.
+`observed_model` is the id echoed back by the API on `resp.model`, not the
+requested one. **This is not, as an earlier draft claimed, what
+`structuring_eval.py:246` does:** that value originates at
+`services/intake/structure.py:66`, which returns `model` from
+`ROUTING["structuring"]`, so it carries the **requested** id and the comment
+at `structuring_eval.py:243` overclaims for the same reason. P2-4 is
+establishing this practice, not following it.
+
+**Matching is by resolved family, not string equality.** `ROUTING` holds bare
+aliases such as `claude-sonnet-5` while the API echoes a resolved snapshot id,
+so exact equality would hard-fail on the first note. The check is that the
+echoed id starts with the requested alias, and any mismatch under that rule
+fails the run.
+
+`split_digest` is carried because an artifact that does not name its split is
+unmoored.
+
+**Row shape: one `eval_runs` row per arm**, each carrying its own `model`,
+`model_effort`, and per-arm metrics, with the comparison block duplicated into
+both rows' `metrics` so either row is self-describing. Phase 3 reads this
+table and a single row cannot hold two models.
 
 ### Replay
 
@@ -672,9 +745,11 @@ event, and on resume the cost inputs to the Equivalent branch would silently
 be missing for exactly the notes already paid for. The acceptance criterion
 "`observed_model` recorded per note" would be tickable while false.
 
-`structuring_eval.generate_soap` already caches
-`note.model_dump_json()` rather than raw text, so this needs no change to
-`llm_cache.Cache`.
+`structuring_eval.generate_soap` already caches `note.model_dump_json()`
+rather than raw text, so this needs no change to `llm_cache.Cache`. Note that
+`LLMResult` is a frozen dataclass, not a pydantic model, so it has no
+`model_dump_json`; explicit `to_json`/`from_json` helpers are part of the
+work. This fails loudly if forgotten.
 
 **Latency is the one field that does not survive a hit.** It is wall-clock, not
 a property of the response. Latency aggregates are therefore computed over
@@ -696,6 +771,13 @@ Opus at high has a different reasoning profile and may truncate, which
   failing 8% on disjoint notes would drop 16% of the analysis set without
   tripping any per-arm threshold. The run voids if the intersection falls
   below 90% of 120 notes.
+- **Attrition is non-random and the void threshold bounds only its size.** If
+  Opus-at-high truncates, it will truncate on the longest notes, and those
+  notes leave the analysis set for **both** arms, biasing the paired
+  comparison toward notes where the tighter-budget arm was comfortable. The
+  artifact records the reference-note length distribution of dropped notes
+  against retained ones so the shape of the loss is visible rather than
+  merely bounded.
 
 ### Pilot
 
@@ -710,9 +792,14 @@ otherwise be held-out notes whose responses are cached and carried into the
 full run, so proceeding after seeing their outcomes would condition on partial
 outcome data from inside the analysis set, an optional-stopping violation.
 
-The pilot reports token usage, latency, truncation rate, codes-per-note,
-`rho`, and the design effect, and answers whether the equivalence branch is
-attainable (section 2). It does **not** report a held-out verified rate.
+The pilot reports token usage, latency, truncation rate, codes-per-note, its
+own `v`, every guard statistic from section 2, `rho`, and the design effect,
+and answers whether the equivalence branch is attainable. Its `v` is a
+sanity check on delta's sizing, never an input (section 4). It does **not**
+report a held-out verified rate.
+
+**The pilot draw is pinned**, by recorded encounter ids or a recorded seed, so
+it cannot be redrawn until it gives a preferred answer.
 
 The Batch API would halve cost and the guide endorses it for offline
 re-scoring, but it is not used: it adds an asynchronous path to
@@ -766,6 +853,7 @@ the pilot shows cost is prohibitive.
 - [ ] Replay recomputes every rate and hard-errors on `vocab_version` mismatch;
       cost and latency verified against stored per-note values
 - [ ] Decision rule applied literally, including `abs(d)` and the Inconclusive
-      branch; winning **configuration** recorded in `shared/llm.py`
+      branch; winning **configuration** recorded in `shared/llm.py` **when one
+      is named**, and `ROUTING` left unchanged when the price table is absent
 - [ ] No artifact describes a number as coding accuracy or attributes a result
       to a model rather than a configuration
