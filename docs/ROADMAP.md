@@ -48,13 +48,15 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
 - **P2-1 Prior-Auth Agent.** Build the agent and its endpoint. Done when a SOAP note yields a valid PriorAuthOutput with confidence in [0, 1], and a note with no prior-auth items returns an empty list rather than free text.
 - **P2-2 Care Gap Agent with a real rule set.** Replace the four placeholder rules with citable screening and follow-up guidelines. Done when each rule maps to a documented guideline source and the rules engine has unit tests for every rule firing and not firing.
 - **P2-3 Coding and Eligibility Agent.** Done when a SOAP note yields a valid CodingOutput, codes are presented as suggestions for human review, and eligibility flags are structured booleans.
-- **P2-4 Coding model benchmark.** Run Sonnet 5 at xhigh against Opus 4.8 at high on the held-out coding set. Done when both results are written to `eval_runs` and the winner is recorded in `shared/llm.py` with a one-line note on why.
+- **P2-4 Coding model routing benchmark.** Run Sonnet 5 at xhigh against Opus 4.8 at high on the held-out set. **This does not measure coding accuracy, and must never be described as if it does.** Neither ACI-Bench nor PriMock57 carries gold billing codes (`heldout_manifest.csv` is `dataset,encounter_id,split`; ACI-Bench is `dataset,encounter_id,dialogue,note`), so there is nothing to compute precision or recall of *correct* codes against. A model can score a perfect verified rate while suggesting codes that are clinically wrong for the note. What is measured: pooled verified rate (`shared/vocab.py::verified_rate`), `unchecked` share, inter-model agreement, and cost and latency. Done when the verified rate's floor is measured and stated FIRST (per the P2-3 spec section 1a: causes 2, 3, and 4 give it a nonzero floor unrelated to hallucination, so without the floor a small gap between two models is uninterpretable), both models' results are written to `eval_runs`, and the winner is recorded in `shared/llm.py` with a one-line note on why.
 - **P2-5 Containerize and deploy.** Done when each agent has its own image and Kubernetes Deployment plus Service, and `kubectl get pods -n care-ops` shows all three agents plus the orchestrator running with passing readiness probes.
 - **P2-6 LangGraph orchestration.** Done when `POST /run` on the orchestrator fans out to all three agents over in-cluster service DNS, an integration test verifies inter-service communication, and a single agent failure does not abort the other two.
 - **P2-7 Registry logging for every agent.** Done when every agent call writes a row to `agent_decisions` with input, output, confidence, model, effort, and latency, and a query by encounter id returns every decision.
 
 **Exit gate:** a note submitted to the orchestrator returns all three structured artifacts, each logged, with the pipeline surviving a single injected agent failure.
-**Metric unlocked:** per-agent decision accuracy, Kubernetes service count, and the coding model routing decision backed by numbers.
+**Metric unlocked:** Kubernetes service count, and the coding model routing decision backed by verified rate, `unchecked` share, agreement, and cost and latency.
+
+Not "per-agent decision accuracy". Accuracy is only claimable where a labeled reference set exists, and for the coding agent none does (see P2-4). The care-gap agent's rules are deterministic and unit-tested, which is a correctness property rather than a measured accuracy. Before claiming an accuracy number for any agent, name the labeled set it was measured against.
 
 ---
 
@@ -111,4 +113,6 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
 
 ## Resume framing (build first, write later)
 
-Once real numbers exist, describe the work with the Google XYZ formula and measured metrics only. Likely angles: per-agent decision accuracy on the held-out set, drift detection sensitivity on a controlled injected drop, end-to-end latency under load, Kubernetes service count and uptime, the coding model routing decision backed by a benchmark, and test count with coverage. No inflated numbers, no invented ones.
+Once real numbers exist, describe the work with the Google XYZ formula and measured metrics only. Likely angles: note-structuring F1 on the leak-free held-out split (the one accuracy number backed by a labeled reference set), drift detection sensitivity on a controlled injected drop, end-to-end latency under load, Kubernetes service count and uptime, the coding model routing decision backed by verified rate and cost, and test count with coverage. No inflated numbers, no invented ones.
+
+**The specific trap here.** "Coding accuracy" is the phrasing this project keeps reaching for and it is not supported by the data (see P2-4). The verified rate says a suggested code *exists in the CMS release*, not that it is *right for the note*. Anything on a resume must say which of those two it is.
