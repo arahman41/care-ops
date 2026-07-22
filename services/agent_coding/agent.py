@@ -101,18 +101,11 @@ def _enrich(payload: ModelCodingPayload) -> CodingOutput:
     )
 
 
-def run(inp: AgentInput) -> CodingOutput:
-    model, effort = ROUTING["coding"]
-    started = time.perf_counter()
-
-    try:
-        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json(),
-                   max_tokens=_MAX_TOKENS)
-    except TruncatedResponseError as exc:
-        # raw="" because call() raises before returning any text. There is
-        # no response to preview; the reason carries the diagnosis.
-        raise CodingError(str(exc), "") from exc
-
+def parse_and_enrich(raw: str) -> CodingOutput:
+    """Turn one raw model response into a validated, vocabulary-classified
+    CodingOutput. The single parsing path, shared by run() and P2-4's benchmark,
+    so a scoring difference can never turn out to be a parsing difference.
+    """
     try:
         data = extract_json(raw)
     except MalformedJSONError as exc:
@@ -128,7 +121,22 @@ def run(inp: AgentInput) -> CodingOutput:
             f"did not match the ModelCodingPayload schema ({exc})",
             raw) from exc
 
-    out = _enrich(payload)
+    return _enrich(payload)
+
+
+def run(inp: AgentInput) -> CodingOutput:
+    model, effort = ROUTING["coding"]
+    started = time.perf_counter()
+
+    try:
+        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json(),
+                   max_tokens=_MAX_TOKENS)
+    except TruncatedResponseError as exc:
+        # raw="" because call() raises before returning any text. There is
+        # no response to preview; the reason carries the diagnosis.
+        raise CodingError(str(exc), "") from exc
+
+    out = parse_and_enrich(raw)
 
     latency_ms = int((time.perf_counter() - started) * 1000)
     log_decision(

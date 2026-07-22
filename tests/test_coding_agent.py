@@ -208,3 +208,23 @@ def test_substantiated_eligibility_flag_is_preserved(monkeypatch):
     _patch(monkeypatch, _one("ICD-10", "E11.9", eligibility_flag=True,
                              eligibility_reason="Commonly requires review"))
     assert coding_agent.run(INPUT).codes[0].eligibility_flag is True
+
+
+# ---------- parse_and_enrich: the shared parsing path (P2-4 seam) ----------
+
+def test_parse_and_enrich_matches_run_output():
+    """The benchmark uses parse_and_enrich directly, so it must produce exactly
+    what run() produces from the same raw string, minus the logging."""
+    out = coding_agent.parse_and_enrich(_one("ICD-10", "E11.9"))
+    assert out.codes[0].vocabulary_status == "verified"
+    assert out.vocabulary_version == vocab.VOCAB_VERSION
+
+
+def test_parse_and_enrich_raises_coding_error_on_bare_array():
+    with pytest.raises(coding_agent.CodingError):
+        coding_agent.parse_and_enrich('[{"system": "ICD-10"}]')
+
+
+def test_parse_and_enrich_raises_coding_error_on_malformed_json():
+    with pytest.raises(coding_agent.CodingError):
+        coding_agent.parse_and_enrich("not json")
