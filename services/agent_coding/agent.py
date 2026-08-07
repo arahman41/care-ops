@@ -18,20 +18,32 @@ from shared.schemas import (
     AgentInput, CodeSuggestion, CodingOutput, ModelCodingPayload,
 )
 
-# Pinned from observed live usage (P2-3 Task 13, 2026-07-19): the largest
-# output over two real notes was 2,264 tokens, on a note carrying three
-# diagnoses plus a procedure and an injectable. Doubled and rounded up to
-# the nearest 500. The counts include xhigh reasoning tokens, which is why
-# this sits so far above the 1500 library default; neither live call was
-# truncated at the provisional 4000.
+# Raised 5000 -> 16000 from the P2-4 pilot (2026-08-07), which measured this
+# against real ACI-Bench reference notes for the first time.
+#
+# The old 5000 was pinned from P2-3 Task 13 (2026-07-19), where the largest
+# output over two real notes was 2,264 tokens. Those two notes were short.
+# On five ACI-Bench train notes, Sonnet 5 at xhigh averaged 4,273 output
+# tokens on the notes that completed and TRUNCATED 2 of 5 at the 5000 cap;
+# Opus 4.8 at high averaged 1,155 and truncated none. So the old pin was
+# fitted to an unrepresentative sample, and it failed asymmetrically: it
+# censored the higher-effort configuration specifically. Left alone it would
+# have driven P2-4's analysis set below its 108-of-120 floor and voided the
+# run, with attrition correlated with the arm under test.
+#
+# 16000 clears the observed 4,273 average with wide margin and stays under
+# the SDK's non-streaming HTTP timeout guidance. Counts include xhigh
+# reasoning tokens, which is why this sits so far above the 1500 default.
 #
 # If this value changes, P2-4's cache key must change with it. See
 # governance/llm_cache.py::cache_key, which does NOT fold in max_tokens:
-# only governance/structuring_eval.py:82 does, by folding it into
-# prompt_version. Any coding-agent caching must follow that pattern, or
+# only governance/structuring_eval.py:82 and
+# governance/coding_benchmark.py::_cache_version_string do, by folding it
+# into prompt_version. Any coding-agent caching must follow that pattern, or
 # changing this cap mid-benchmark produces silent cache HITS that blend two
-# configurations into one number.
-_MAX_TOKENS = 5000
+# configurations into one number. This raise deliberately invalidates every
+# cached coding response, which is the correct behavior, not a regression.
+_MAX_TOKENS = 16000
 
 _SYSTEM = (
     "You suggest likely ICD-10, CPT, and HCPCS Level II codes for a SOAP "
@@ -101,18 +113,11 @@ def _enrich(payload: ModelCodingPayload) -> CodingOutput:
     )
 
 
-def run(inp: AgentInput) -> CodingOutput:
-    model, effort = ROUTING["coding"]
-    started = time.perf_counter()
-
-    try:
-        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json(),
-                   max_tokens=_MAX_TOKENS)
-    except TruncatedResponseError as exc:
-        # raw="" because call() raises before returning any text. There is
-        # no response to preview; the reason carries the diagnosis.
-        raise CodingError(str(exc), "") from exc
-
+def parse_and_enrich(raw: str) -> CodingOutput:
+    """Turn one raw model response into a validated, vocabulary-classified
+    CodingOutput. The single parsing path, shared by run() and P2-4's benchmark,
+    so a scoring difference can never turn out to be a parsing difference.
+    """
     try:
         data = extract_json(raw)
     except MalformedJSONError as exc:
@@ -128,7 +133,22 @@ def run(inp: AgentInput) -> CodingOutput:
             f"did not match the ModelCodingPayload schema ({exc})",
             raw) from exc
 
-    out = _enrich(payload)
+    return _enrich(payload)
+
+
+def run(inp: AgentInput) -> CodingOutput:
+    model, effort = ROUTING["coding"]
+    started = time.perf_counter()
+
+    try:
+        raw = call("coding", system=_SYSTEM, user=inp.soap.model_dump_json(),
+                   max_tokens=_MAX_TOKENS)
+    except TruncatedResponseError as exc:
+        # raw="" because call() raises before returning any text. There is
+        # no response to preview; the reason carries the diagnosis.
+        raise CodingError(str(exc), "") from exc
+
+    out = parse_and_enrich(raw)
 
     latency_ms = int((time.perf_counter() - started) * 1000)
     log_decision(

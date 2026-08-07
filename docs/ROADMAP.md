@@ -49,6 +49,50 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
 - **P2-2 Care Gap Agent with a real rule set.** Replace the four placeholder rules with citable screening and follow-up guidelines. Done when each rule maps to a documented guideline source and the rules engine has unit tests for every rule firing and not firing.
 - **P2-3 Coding and Eligibility Agent.** Done when a SOAP note yields a valid CodingOutput, codes are presented as suggestions for human review, and eligibility flags are structured booleans.
 - **P2-4 Coding model routing benchmark.** Run Sonnet 5 at xhigh against Opus 4.8 at high on the held-out set. **This does not measure coding accuracy, and must never be described as if it does.** Neither ACI-Bench nor PriMock57 carries gold billing codes (`heldout_manifest.csv` is `dataset,encounter_id,split`; ACI-Bench is `dataset,encounter_id,dialogue,note`), so there is nothing to compute precision or recall of *correct* codes against. A model can score a perfect verified rate while suggesting codes that are clinically wrong for the note. What is measured: pooled verified rate (`shared/vocab.py::verified_rate`), `unchecked` share, inter-model agreement, and cost and latency. Done when the verified rate's floor is measured and stated FIRST (per the P2-3 spec section 1a: causes 2, 3, and 4 give it a nonzero floor unrelated to hallucination, so without the floor a small gap between two models is uninterpretable), both models' results are written to `eval_runs`, and the winner is recorded in `shared/llm.py` with a one-line note on why.
+
+  **DONE 2026-08-07.** Artifact `governance/eval_artifacts/coding_20260807T214249Z.json`,
+  `eval_runs` rows 3 and 4, replay verified. 240 live calls, $9.17, analysis
+  set 113 of 120 (above the 108 floor, so not void; attrition mildly
+  length-biased, dropped median 2,908 chars against retained 2,670).
+
+  | arm | configuration | verified rate | not-found | unchecked | codes/note | cost |
+  |---|---|---|---|---|---|---|
+  | A | claude-sonnet-5 at xhigh | 96.65 | 3.35 | 37.05 | 7.14 | $6.01 |
+  | B | claude-opus-4-8 at high | 97.35 | 2.65 | 37.08 | 8.50 | $3.16 |
+
+  Paired delta nf(A)-nf(B) = 0.70 points, 95% BCa CI [-0.73, 2.22], seed
+  20260722, 10,000 replicates. Branch **inconclusive** (guard
+  `floor_divergence`), so the rule routed on **cost** to
+  `("claude-opus-4-8", "high")`, now set in `shared/llm.py`.
+
+  **The floor was measured and stated first, as this entry requires.**
+  `vocab_floor_version = "none"`: every not-found code in both arms is cause 1
+  (fabricated). Nothing landed in the degenerate, CPT-shaped, or absent-from-pin
+  buckets, so the FY2025 cause-2 vendoring would have changed nothing and was
+  not done. Both floor bands are therefore [0, not-found rate].
+
+  **Two caveats to carry forward.** (1) The floor-divergence guard could not
+  have passed on this data: with cause 2, 3, and 4 all zero, both bands start
+  at zero and `max(nf_A, nf_B)` is always at least `|nf_A - nf_B|`. Removing
+  the guard does **not** change the branch, because the CI reaches inconclusive
+  on its own. Any future re-run should either attribute real mass to causes 2
+  to 4 or re-pre-register the guard, before seeing data. (2) The quality
+  comparison is unresolved, not settled: the CI straddles zero. This is a cost
+  decision.
+
+  **Tooling debt found during this run:** `make db-init` expands
+  `$(POSTGRES_USER)`/`$(POSTGRES_DB)` to empty because make never loads `.env`,
+  and the Make targets call bare `python` rather than the venv interpreter.
+  Both fixed 2026-08-07.
+
+  **Storage contract (forward-looking, added 2026-07-22).** P2-4 writes coding
+  `eval_runs` rows with `accuracy`, `f1`, `precision`, and `recall` all NULL,
+  and the verified rate in the `metrics` JSONB column. Any Phase 3 consumer
+  (P3-1 runner, P3-2 windows, P3-5 API, P4-1 dashboard) MUST tolerate an
+  all-NULL accuracy family and read coding numbers from `metrics`. As of
+  2026-07-22 there are no `eval_runs` SELECT readers anywhere in the repo, so
+  this is a contract on code not yet written, not a migration of existing code.
+
 - **P2-5 Containerize and deploy.** Done when each agent has its own image and Kubernetes Deployment plus Service, and `kubectl get pods -n care-ops` shows all three agents plus the orchestrator running with passing readiness probes.
 - **P2-6 LangGraph orchestration.** Done when `POST /run` on the orchestrator fans out to all three agents over in-cluster service DNS, an integration test verifies inter-service communication, and a single agent failure does not abort the other two.
 - **P2-7 Registry logging for every agent.** Done when every agent call writes a row to `agent_decisions` with input, output, confidence, model, effort, and latency, and a query by encounter id returns every decision.

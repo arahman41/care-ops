@@ -4,8 +4,10 @@ Routing reflects the cost and accuracy analysis for this project:
   - note structuring : Sonnet 5, high effort (headline accuracy metric)
   - prior_auth        : Sonnet 5, high effort (bounded reasoning)
   - care_gap          : Haiku 4.5 (rules-based core, LLM only for phrasing)
-  - coding            : Sonnet 5 xhigh by default; benchmark Opus 4.8 and
-                        keep the winner on the held-out coding accuracy set
+  - coding            : Opus 4.8 at high, chosen by the P2-4 benchmark.
+                        That benchmark compared VERIFIED RATES, not coding
+                        accuracy: no held-out set carries gold billing
+                        codes, so there is no coding accuracy to measure.
   - transparency      : Haiku 4.5 (template fill)
   - eval_judge        : Haiku 4.5 at temperature 0. This one grades the
                         others, so it is pinned hard: no effort, no sampling.
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 
 from anthropic import Anthropic
 
@@ -34,6 +37,18 @@ from shared.config import settings
 
 _client = Anthropic(api_key=settings.anthropic_api_key)
 
+# coding: the P2-4 benchmark (artifact
+# governance/eval_artifacts/coding_20260807T214249Z.json, branch=inconclusive,
+# guard=floor_divergence) routed to claude-opus-4-8 at high. This is a
+# (model, effort) CONFIGURATION result, not a model result, and not a
+# coding-accuracy result.
+#
+# The branch was inconclusive, so the rule routes on COST, not on a
+# demonstrated quality win: 113 held-out notes gave a paired not-found-rate
+# difference of 0.70 points with a 95% BCa CI of [-0.73, 2.22], which neither
+# clears zero nor fits inside the pre-registered 1.5 point margin. Cost decided
+# it, at $3.16 against $6.01 over the same set. Latency agreed independently
+# (p50 15 s against 73 s), and so did the unresolved quality point estimate.
 ROUTING = {
     "structuring": (os.getenv("MODEL_STRUCTURING", "claude-sonnet-5"),
                     os.getenv("EFFORT_STRUCTURING", "high")),
@@ -41,8 +56,8 @@ ROUTING = {
                    os.getenv("EFFORT_PRIOR_AUTH", "high")),
     "care_gap": (os.getenv("MODEL_CARE_GAP", "claude-haiku-4-5-20251001"),
                  None),
-    "coding": (os.getenv("MODEL_CODING", "claude-sonnet-5"),
-               os.getenv("EFFORT_CODING", "xhigh")),
+    "coding": (os.getenv("MODEL_CODING", "claude-opus-4-8"),
+               os.getenv("EFFORT_CODING", "high")),
     "transparency": (os.getenv("MODEL_TRANSPARENCY", "claude-haiku-4-5-20251001"),
                      None),
     "eval_judge": (os.getenv("MODEL_EVAL_JUDGE", "claude-haiku-4-5-20251001"),
@@ -104,22 +119,62 @@ def extract_json(raw: str) -> dict | list:
         raise MalformedJSONError(f"not valid JSON ({exc})", raw) from exc
 
 
-def call(component: str, system: str, user: str,
-         max_tokens: int = 1500, temperature: float | None = None) -> str:
-    """Route a component to its configured model and effort, return text.
+# Distinguishes "caller did not override effort" from "override to no effort".
+# ROUTING stores None as a MEANINGFUL effort for care_gap/transparency/eval_judge,
+# so a plain `effort=None` default would collide those two cases. Harmless for
+# P2-4's two arms, but this is the one place model routing lives.
+_UNSET = object()
 
-    temperature and effort are mutually exclusive at the API: a component with
-    an effort level is a reasoning call and does its own sampling. Only the
-    effort-free components (the judge) may pin temperature.
+
+@dataclass(frozen=True)
+class LLMResult:
+    text: str
+    model: str            # resp.model: the id that ACTUALLY ran, not requested
+    input_tokens: int
+    output_tokens: int
+    stop_reason: str      # never "max_tokens": call_detailed raises first
+
+    def to_json(self) -> str:
+        return json.dumps({
+            "text": self.text, "model": self.model,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "stop_reason": self.stop_reason,
+        })
+
+    @classmethod
+    def from_json(cls, s: str) -> "LLMResult":
+        d = json.loads(s)
+        return cls(text=d["text"], model=d["model"],
+                   input_tokens=d["input_tokens"],
+                   output_tokens=d["output_tokens"],
+                   stop_reason=d["stop_reason"])
+
+
+def call_detailed(component: str, system: str, user: str,
+                  max_tokens: int = 1500, temperature: float | None = None,
+                  model: str | None = None, effort=_UNSET) -> LLMResult:
+    """Route a component to a model and effort, return the full result.
+
+    `model` and `effort` override ROUTING for this one call; that is how P2-4
+    issues one arm as Sonnet-5-at-xhigh and the other as Opus-4.8-at-high while
+    keeping model routing in this one module. `effort` uses the _UNSET sentinel,
+    not None, because None is a meaningful configured effort.
+
+    temperature and effort are mutually exclusive at the API: an effort call is
+    a reasoning call and samples for itself. Only effort-free components (the
+    judge) may pin temperature.
     """
-    model, effort = ROUTING[component]
+    default_model, default_effort = ROUTING[component]
+    model = default_model if model is None else model
+    effort = default_effort if effort is _UNSET else effort
+
     kwargs = {
         "model": model,
         "max_tokens": max_tokens,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
-    # Effort is applied only where a level is configured.
     if effort:
         kwargs["output_config"] = {"effort": effort}
     elif temperature is not None:
@@ -130,5 +185,24 @@ def call(component: str, system: str, user: str,
     if resp.stop_reason == "max_tokens":
         raise TruncatedResponseError(component, max_tokens)
 
-    return "".join(block.text for block in resp.content
+    text = "".join(block.text for block in resp.content
                    if getattr(block, "type", None) == "text")
+    return LLMResult(
+        text=text,
+        model=resp.model,                    # what actually ran
+        input_tokens=resp.usage.input_tokens,
+        output_tokens=resp.usage.output_tokens,
+        stop_reason=resp.stop_reason,
+    )
+
+
+def call(component: str, system: str, user: str,
+         max_tokens: int = 1500, temperature: float | None = None) -> str:
+    """Thin wrapper over call_detailed for callers that want only the text.
+
+    Kept so no existing caller changes: call() returns str and discards the
+    response, which is exactly why call_detailed exists (P2-4 needs resp.model
+    and resp.usage).
+    """
+    return call_detailed(component, system, user, max_tokens=max_tokens,
+                         temperature=temperature).text

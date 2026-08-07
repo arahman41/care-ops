@@ -105,8 +105,28 @@ This is what the pipeline calls at execution time. It does not change per phase.
 | Note structuring | claude-sonnet-5 | high | Benchmark Opus 4.8 once, keep the comparison |
 | Prior-Auth Agent | claude-sonnet-5 | high | Bounded reasoning |
 | Care Gap Agent | claude-haiku-4-5-20251001 | n/a | Rules-based core, LLM only for phrasing |
-| Coding and Eligibility | claude-sonnet-5 vs claude-opus-4-8 | xhigh vs high | Benchmark in P2-4, keep the winner |
+| Coding and Eligibility | claude-opus-4-8 | high | Chosen by the P2-4 benchmark, 2026-08-07. See note below |
 | Transparency report | claude-haiku-4-5-20251001 | n/a | Template fill |
 | Orchestrator routing | none | n/a | Deterministic in v1 |
+
+**Coding routing, decided 2026-08-07 (P2-4).** Artifact
+`governance/eval_artifacts/coding_20260807T214249Z.json`, `eval_runs` rows 3
+and 4. The winner is a `(model, effort)` **configuration**, not a model, and
+the number behind it is a vocabulary **verified rate**, never coding accuracy.
+
+Measured over 113 of 120 held-out ACI-Bench notes: Sonnet 5 at xhigh verified
+96.65 points against Opus 4.8 at high on 97.35. The paired not-found-rate
+difference was 0.70 points, 95% BCa CI [-0.73, 2.22]. That interval neither
+clears zero nor fits inside the pre-registered 1.5 point margin, so the branch
+was **inconclusive** and the rule routed on **cost**: $3.16 for Opus 4.8 at
+high against $6.01 for Sonnet 5 at xhigh over the same set.
+
+So this is a cost decision, not a demonstrated quality win. Latency agreed
+independently (p50 15 s against 73 s), as did the unresolved quality point
+estimate. Two caveats worth carrying forward: Sonnet 5 at xhigh emits roughly
+5.3x the output tokens of Opus 4.8 at high, which is what makes it more
+expensive despite the lower per-token rate; and the floor-divergence guard
+could not have passed on this data, though removing it does not change the
+branch.
 
 Cost controls that stay on regardless of phase: prompt caching on the stable content (SOAP schema, system prompts, coding references) and the Batch API for offline re-scoring in the drift harness. Confirm the exact effort keyword against the current SDK, isolated in `shared/llm.call`.
