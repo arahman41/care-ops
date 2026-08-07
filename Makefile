@@ -1,7 +1,7 @@
-.PHONY: help install dev-install lint test cov up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay
+.PHONY: help install dev-install lint test cov up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay coding-benchmark coding-benchmark-pilot coding-benchmark-replay
 
 help:
-	@echo "Targets: install dev-install lint test cov up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay"
+	@echo "Targets: install dev-install lint test cov up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay coding-benchmark coding-benchmark-pilot coding-benchmark-replay"
 
 install:
 	pip install -r requirements.txt
@@ -53,3 +53,18 @@ eval-structuring-primock:
 # Recompute the headline from the committed verdicts. Zero API calls.
 eval-structuring-replay:
 	python scripts/run_structuring_eval.py --replay $(ARTIFACT)
+
+# The newest coding-benchmark committed artifact (never the .full.json roster).
+CODING_ARTIFACT ?= $(shell ls -t governance/eval_artifacts/coding_*.json 2>/dev/null | grep -v '\.full\.json' | head -1)
+
+# P2-4 coding routing benchmark. The pilot is cheap; the full run spends real
+# money (240 calls at xhigh and high) and is human-gated. See the runbook in
+# docs/superpowers/plans/2026-07-22-p2-4-coding-routing-benchmark.md.
+coding-benchmark-pilot:
+	python scripts/run_coding_benchmark.py --pilot
+
+coding-benchmark:
+	python scripts/run_coding_benchmark.py
+
+coding-benchmark-replay:
+	python scripts/run_coding_benchmark.py --replay $(CODING_ARTIFACT)

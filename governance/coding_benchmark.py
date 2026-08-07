@@ -20,7 +20,10 @@ from pathlib import Path
 import numpy as np
 
 from governance.aci_sections import SOAP_BUCKETS, bucket_sections
-from governance.coding_metrics import DedupedCode, floor_band, note_denominators
+from governance.coding_bootstrap import NotePair
+from governance.coding_metrics import (
+    DedupedCode, dedupe_note, floor_band, note_agreement, note_denominators,
+)
 from governance.llm_cache import Cache, cache_key
 from governance.structuring_eval import hash_prompt
 from services.agent_coding.agent import (
@@ -194,6 +197,67 @@ def tally_from_deduped(deduped: list[DedupedCode], *, input_tokens: int,
                      cause2=band.cause2, cause3=band.cause3, cause4=band.cause4,
                      input_tokens=input_tokens, output_tokens=output_tokens,
                      latency_ms=latency_ms)
+
+
+@dataclass(frozen=True)
+class AssembledRun:
+    """Everything downstream needs, restricted to the intersection."""
+    analysis: AnalysisSet
+    arm_tallies: dict[str, dict[str, NoteTally]]   # "A"/"B" -> eid -> tally
+    agreement: dict[str, float | None]             # descriptive only, never routed
+    strata: dict[str, bool]
+    note_pairs: list[NotePair]                     # ordered by analysis.ids
+
+
+def assemble_run(results_a: dict[str, ArmNoteResult],
+                 results_b: dict[str, ArmNoteResult],
+                 strata: dict[str, bool],
+                 floor_members=None) -> AssembledRun:
+    """Fold both arms' per-note results into the analysis set and its tallies.
+
+    Pairing follows the SORTED analysis ids for both arms, so a NotePair can
+    never pair note i of one arm with note j of the other, which would silently
+    destroy the pairing the bootstrap depends on.
+    """
+    per_note_ok = {
+        eid: (results_a[eid].output is not None,
+              results_b[eid].output is not None)
+        for eid in results_a.keys() & results_b.keys()
+    }
+    analysis = build_analysis_set(per_note_ok)
+
+    tallies: dict[str, dict[str, NoteTally]] = {"A": {}, "B": {}}
+    agreement: dict[str, float | None] = {}
+    pairs: list[NotePair] = []
+
+    for eid in analysis.ids:
+        ra, rb = results_a[eid], results_b[eid]
+        da = dedupe_note(ra.output)
+        db = dedupe_note(rb.output)
+
+        ta = tally_from_deduped(da, input_tokens=ra.tokens[0],
+                                output_tokens=ra.tokens[1],
+                                latency_ms=ra.latency_ms,
+                                floor_members=floor_members)
+        tb = tally_from_deduped(db, input_tokens=rb.tokens[0],
+                                output_tokens=rb.tokens[1],
+                                latency_ms=rb.latency_ms,
+                                floor_members=floor_members)
+        tallies["A"][eid] = ta
+        tallies["B"][eid] = tb
+        agreement[eid] = note_agreement(da, db)
+        pairs.append(NotePair(nf_a=ta.not_found,
+                              checkable_a=ta.verified + ta.not_found,
+                              nf_b=tb.not_found,
+                              checkable_b=tb.verified + tb.not_found))
+
+    return AssembledRun(
+        analysis=analysis,
+        arm_tallies=tallies,
+        agreement=agreement,
+        strata={eid: strata[eid] for eid in analysis.ids},
+        note_pairs=pairs,
+    )
 
 
 def _rates_from_sums(v: int, nf: int, un: int,

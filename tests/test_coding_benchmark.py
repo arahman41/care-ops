@@ -345,6 +345,70 @@ def test_the_two_aggregation_paths_agree(monkeypatch):
     assert agg["n_checkable"] == summary.checkable
 
 
+def test_assemble_run_restricts_everything_to_the_intersection():
+    from governance.coding_benchmark import ArmNoteResult, assemble_run
+    from shared.schemas import CodeSuggestion, CodingOutput
+
+    def _co(*pairs):
+        codes = [CodeSuggestion(system=s, code=c, description="d",
+                                vocabulary_status=vocab.classify(s, c))
+                 for s, c in pairs]
+        return CodingOutput(codes=codes, confidence=0.9,
+                            vocabulary_version=vocab.VOCAB_VERSION)
+
+    def _res(out):
+        return ArmNoteResult(out, "m-1", (10, 20), 100,
+                             None if out is not None else "parse: boom")
+
+    a = {"n1": _res(_co(("ICD-10", "E11.9"), ("ICD-10", "M9999"))),
+         "n2": _res(_co(("ICD-10", "I10"))),
+         "n3": _res(None)}                       # arm A failed n3
+    b = {"n1": _res(_co(("ICD-10", "E11.9"))),
+         "n2": _res(None),                       # arm B failed n2
+         "n3": _res(_co(("ICD-10", "I10")))}
+    strata = {"n1": False, "n2": True, "n3": False}
+
+    run = assemble_run(a, b, strata)
+    assert run.analysis.ids == ["n1"]            # only n1 survived both arms
+    assert set(run.arm_tallies["A"]) == {"n1"}
+    assert set(run.arm_tallies["B"]) == {"n1"}
+    assert set(run.agreement) == {"n1"}
+    assert set(run.strata) == {"n1"}
+    # n1: arm A {E119, M9999}, arm B {E119} -> Jaccard 1/2
+    assert run.agreement["n1"] == pytest.approx(0.5)
+    # NotePair ordering follows analysis.ids, arm A has 1 not_found of 2 checkable
+    assert len(run.note_pairs) == 1
+    assert run.note_pairs[0].nf_a == 1 and run.note_pairs[0].checkable_a == 2
+    assert run.note_pairs[0].nf_b == 0 and run.note_pairs[0].checkable_b == 1
+    # tokens ride through from the ArmNoteResult, for cost accounting
+    assert run.arm_tallies["A"]["n1"].input_tokens == 10
+    assert run.arm_tallies["A"]["n1"].output_tokens == 20
+
+
+def test_assemble_run_note_pairs_align_with_analysis_ids_order():
+    from governance.coding_benchmark import ArmNoteResult, assemble_run
+    from shared.schemas import CodeSuggestion, CodingOutput
+
+    def _co(code):
+        return CodingOutput(
+            codes=[CodeSuggestion(system="ICD-10", code=code, description="d",
+                                  vocabulary_status=vocab.classify("ICD-10", code))],
+            confidence=0.9, vocabulary_version=vocab.VOCAB_VERSION)
+
+    # Insertion order deliberately not sorted, to prove the pairing follows the
+    # SORTED analysis ids and cannot silently pair note i of arm A with note j
+    # of arm B.
+    a = {"n3": ArmNoteResult(_co("M9999"), "m", (1, 1), 1, None),
+         "n1": ArmNoteResult(_co("E11.9"), "m", (1, 1), 1, None)}
+    b = {"n3": ArmNoteResult(_co("E11.9"), "m", (1, 1), 1, None),
+         "n1": ArmNoteResult(_co("M9999"), "m", (1, 1), 1, None)}
+    run = assemble_run(a, b, {"n1": False, "n3": False})
+    assert run.analysis.ids == ["n1", "n3"]
+    # n1: A verified (nf 0), B not_found (nf 1). n3 is the mirror image.
+    assert (run.note_pairs[0].nf_a, run.note_pairs[0].nf_b) == (0, 1)
+    assert (run.note_pairs[1].nf_a, run.note_pairs[1].nf_b) == (1, 0)
+
+
 def test_tally_from_deduped_causes_sum_to_not_found():
     # Every not_found code lands in exactly one cause, which is what lets
     # _rates_from_sums derive cause1 as the residual.
