@@ -104,3 +104,41 @@ def run_arm_on_note(soap: SoapNote, model: str, effort: str,
         return ArmNoteResult(None, result.model, tokens, latency_ms,
                              f"parse: {exc}")
     return ArmNoteResult(output, result.model, tokens, latency_ms, None)
+
+
+INTERSECTION_MIN = 108        # 0.90 * 120 target notes (spec §2, §8)
+
+
+@dataclass(frozen=True)
+class AnalysisSet:
+    ids: list[str]            # notes both arms parsed, sorted
+    dropped_ids: list[str]    # notes at least one arm failed, sorted
+
+    @property
+    def is_void(self) -> bool:
+        return len(self.ids) < INTERSECTION_MIN
+
+
+def build_analysis_set(per_note_ok: dict[str, tuple[bool, bool]]) -> AnalysisSet:
+    """Intersection of notes both arms parsed. Void is judged on the
+    intersection size, never per arm (spec §8): two arms each failing 8% on
+    disjoint notes would drop 16% without tripping any per-arm threshold."""
+    keep, drop = [], []
+    for eid, (a_ok, b_ok) in per_note_ok.items():
+        (keep if a_ok and b_ok else drop).append(eid)
+    return AnalysisSet(ids=sorted(keep), dropped_ids=sorted(drop))
+
+
+def attrition_length_summary(dropped_lengths: list[int],
+                             retained_lengths: list[int]) -> dict:
+    """Reference-note length distribution of dropped vs retained notes, so the
+    SHAPE of a non-random loss is visible, not merely bounded (spec §8)."""
+    def _summ(xs: list[int]) -> dict:
+        if not xs:
+            return {"n": 0, "min": None, "median": None, "max": None, "mean": None}
+        s = sorted(xs)
+        mid = len(s) // 2
+        median = s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
+        return {"n": len(s), "min": s[0], "median": median, "max": s[-1],
+                "mean": sum(s) / len(s)}
+    return {"dropped": _summ(dropped_lengths), "retained": _summ(retained_lengths)}

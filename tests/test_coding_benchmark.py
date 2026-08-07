@@ -131,3 +131,66 @@ def test_cache_version_string_folds_in_effort_and_max_tokens():
     assert v_x != v_h                       # effort changes the key
     assert "max5000" in v_x                 # max_tokens is folded in
     assert len(v_x.split("|")) == 3         # effort|prompt_hash|max_tokens
+
+
+# ---------- the intersection analysis set (Task 6.5) ----------
+
+from governance.coding_benchmark import build_analysis_set, INTERSECTION_MIN  # noqa: E402
+
+
+def test_analysis_set_is_the_intersection_of_parsed_notes():
+    # note -> (arm_a_ok, arm_b_ok)
+    per_note = {
+        "D2N001": (True, True),
+        "D2N002": (True, False),   # arm B failed
+        "D2N003": (False, True),   # arm A failed
+        "D2N004": (True, True),
+    }
+    a = build_analysis_set(per_note)
+    assert a.ids == ["D2N001", "D2N004"]
+    assert a.dropped_ids == ["D2N002", "D2N003"]
+
+
+def test_void_threshold_is_108_of_120():
+    assert INTERSECTION_MIN == 108     # 0.90 * 120
+
+
+def test_intersection_below_the_floor_is_flagged_void():
+    per_note = {f"n{i}": (True, i >= 20) for i in range(120)}  # 20 arm-B fails
+    a = build_analysis_set(per_note)
+    assert len(a.ids) == 100 and a.is_void is True
+
+
+def test_intersection_at_the_floor_is_not_void():
+    per_note = {f"n{i}": (True, i >= 12) for i in range(120)}  # 108 retained
+    a = build_analysis_set(per_note)
+    assert len(a.ids) == 108 and a.is_void is False
+
+
+def test_void_is_judged_on_the_intersection_not_per_arm():
+    # The failure this threshold exists to catch: each arm fails only 8% (under
+    # any plausible per-arm threshold), but on DISJOINT notes, so the paired
+    # intersection loses 16% and must void.
+    per_note = {}
+    for i in range(120):
+        a_ok = not (i < 10)              # arm A fails notes 0-9
+        b_ok = not (10 <= i < 20)        # arm B fails notes 10-19
+        per_note[f"n{i}"] = (a_ok, b_ok)
+    a = build_analysis_set(per_note)
+    assert len(a.ids) == 100             # neither arm failed >10, but 20 lost
+    assert a.is_void is True
+
+
+def test_attrition_summary_reports_the_shape_of_the_loss():
+    from governance.coding_benchmark import attrition_length_summary
+    s = attrition_length_summary(dropped_lengths=[100, 200, 300],
+                                 retained_lengths=[10, 20])
+    assert s["dropped"]["n"] == 3 and s["dropped"]["median"] == 200
+    assert s["retained"]["n"] == 2 and s["retained"]["median"] == 15
+    assert s["dropped"]["max"] == 300 and s["retained"]["min"] == 10
+
+
+def test_attrition_summary_handles_an_empty_side():
+    from governance.coding_benchmark import attrition_length_summary
+    s = attrition_length_summary(dropped_lengths=[], retained_lengths=[5])
+    assert s["dropped"]["n"] == 0 and s["dropped"]["median"] is None
