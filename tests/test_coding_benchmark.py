@@ -126,10 +126,14 @@ def test_cache_version_string_folds_in_effort_and_max_tokens():
     # Effort, prompt hash, and max_tokens all belong in the key: the bare
     # PROMPT_VERSION = "v1" literal used elsewhere in governance/ is the exact
     # failure that blends two prompt versions into one number.
+    from services.agent_coding.agent import _MAX_TOKENS
     v_x = cb._cache_version_string("xhigh")
     v_h = cb._cache_version_string("high")
     assert v_x != v_h                       # effort changes the key
-    assert "max5000" in v_x                 # max_tokens is folded in
+    # Assert against the constant, not a literal: the P2-4 pilot raised this
+    # cap from 5000 to 16000 and a hardcoded "max5000" would have gone stale
+    # silently, which is the exact class of drift this key exists to prevent.
+    assert f"max{_MAX_TOKENS}" in v_x       # max_tokens is folded in
     assert len(v_x.split("|")) == 3         # effort|prompt_hash|max_tokens
 
 
