@@ -56,6 +56,14 @@ CREATE TABLE IF NOT EXISTS eval_runs (
 
 CREATE INDEX IF NOT EXISTS idx_eval_agent_window ON eval_runs(agent_name, window_label);
 
+-- P2-4: the coding routing benchmark stores a JSONB metrics blob (per-arm
+-- section-1 metrics plus the comparison block) and the effort half of the
+-- configuration under test. accuracy/f1/precision/recall stay NULL for coding
+-- rows: no held-out set carries gold billing codes, so a verified rate must
+-- not be written where a Phase 3 dashboard would read it as accuracy.
+ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS metrics JSONB;
+ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS model_effort TEXT;
+
 -- Model inventory for the transparency dashboard (HTI-1 style fields).
 CREATE TABLE IF NOT EXISTS model_inventory (
     id                  BIGSERIAL PRIMARY KEY,
