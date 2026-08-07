@@ -1,9 +1,26 @@
 """P2-4 pilot: train-split loader and diagnostics. No held-out data (spec §8)."""
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from governance.coding_pilot import load_aci_train, pin_pilot_ids
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DATA_ROOT = REPO_ROOT / "data"
 
+# The datasets are gitignored (.gitignore: data/*, with only data/vocab
+# re-included), so CI checks out a tree without them. Follow the same guard
+# tests/test_heldout_guard.py uses, or these fail on a machine that simply has
+# not downloaded the data. The pure diagnostics below need no data and run
+# everywhere, which is where the real logic lives anyway.
+_DATA_PRESENT = (DATA_ROOT / "aci-bench" / "data" / "challenge_data").is_dir()
+needs_data = pytest.mark.skipif(not _DATA_PRESENT,
+                                reason="datasets not downloaded")
+
+
+@needs_data
 def test_train_loader_returns_only_train_split_encounters():
     train = load_aci_train()
     assert len(train) == 67          # re-measured 2026-07-22
@@ -14,6 +31,7 @@ def test_train_loader_returns_only_train_split_encounters():
     assert ids.isdisjoint(heldout_ids)
 
 
+@needs_data
 def test_pilot_draw_is_pinned_and_reproducible():
     a = pin_pilot_ids(n=5, seed=20260722)
     b = pin_pilot_ids(n=5, seed=20260722)
