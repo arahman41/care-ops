@@ -194,3 +194,168 @@ def test_attrition_summary_handles_an_empty_side():
     from governance.coding_benchmark import attrition_length_summary
     s = attrition_length_summary(dropped_lengths=[], retained_lengths=[5])
     assert s["dropped"]["n"] == 0 and s["dropped"]["median"] is None
+
+
+# ---------- tally, artifact, replay (Task 7.1) ----------
+
+import json  # noqa: E402
+
+from governance.coding_benchmark import (  # noqa: E402
+    NoteTally, aggregate_tallies, build_committed_artifact, build_roster,
+    replay_coding, tally_from_deduped,
+)
+from shared import vocab  # noqa: E402
+
+
+def _tally(v, nf, un, c1=0, c2=0, c3=0, c4=0, itok=10, otok=20, lat=100):
+    return NoteTally(verified=v, not_found=nf, unchecked=un,
+                     cause1=c1, cause2=c2, cause3=c3, cause4=c4,
+                     input_tokens=itok, output_tokens=otok, latency_ms=lat)
+
+
+def _meta():
+    return {"A": {"requested_model": "claude-sonnet-5",
+                  "requested_effort": "xhigh",
+                  "observed_model": "claude-sonnet-5-20260101"},
+            "B": {"requested_model": "claude-opus-4-8",
+                  "requested_effort": "high",
+                  "observed_model": "claude-opus-4-8-20260101"}}
+
+
+def _run_meta(vocab_version=None):
+    return {"vocab_version": vocab_version or vocab.VOCAB_VERSION,
+            "vocab_floor_version": "none", "price_table_ref": None,
+            "split_digest": "d" * 64, "dataset_ref": "aci-bench-heldout-v1"}
+
+
+def test_aggregate_tallies_matches_arm_summary_rates():
+    tallies = [_tally(1, 1, 0), _tally(2, 0, 0)]     # pooled 3/4 verified
+    agg = aggregate_tallies(tallies)
+    assert agg["verified_rate"] == pytest.approx(75.0)
+    assert agg["not_found_rate"] == pytest.approx(25.0)
+
+
+def test_committed_artifact_carries_no_billing_codes(tmp_path):
+    # Build a tiny run payload with a real code in the roster; assert the code
+    # never appears in the committed artifact.
+    committed = build_committed_artifact(
+        arm_tallies={"A": {"D2N001": _tally(1, 1, 0, c1=1)},
+                     "B": {"D2N001": _tally(2, 0, 0)}},
+        agreement={"D2N001": 0.5}, strata={"D2N001": False},
+        comparison={"branch_fired": "inconclusive"},
+        run_meta=_run_meta(), arm_meta=_meta())
+    blob = json.dumps(committed)
+    assert "E11.9" not in blob and "E119" not in blob   # no codes leak
+
+
+def test_replay_recomputes_rates_and_matches(tmp_path):
+    committed = build_committed_artifact(
+        arm_tallies={"A": {"n1": _tally(3, 1, 0, c1=1)},
+                     "B": {"n1": _tally(4, 0, 0)}},
+        agreement={"n1": 0.8}, strata={"n1": False},
+        comparison={"branch_fired": "inconclusive"},
+        run_meta=_run_meta(), arm_meta=_meta())
+    path = tmp_path / "coding_run.json"
+    path.write_text(json.dumps(committed), encoding="utf-8")
+    out = replay_coding(path)
+    assert out["A"]["verified_rate"] == pytest.approx(75.0)
+
+
+def test_replay_hard_errors_on_vocab_version_mismatch(tmp_path):
+    committed = build_committed_artifact(
+        arm_tallies={"A": {"n1": _tally(3, 1, 0)}, "B": {"n1": _tally(4, 0, 0)}},
+        agreement={"n1": 1.0}, strata={"n1": False}, comparison={},
+        run_meta=_run_meta("STALE PIN"), arm_meta=_meta())
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps(committed), encoding="utf-8")
+    with pytest.raises(ValueError, match="vocab_version"):
+        replay_coding(path)
+
+
+def test_replay_hard_errors_on_a_tampered_stored_rate(tmp_path):
+    committed = build_committed_artifact(
+        arm_tallies={"A": {"n1": _tally(3, 1, 0)}, "B": {"n1": _tally(4, 0, 0)}},
+        agreement={"n1": 1.0}, strata={"n1": False}, comparison={},
+        run_meta=_run_meta(), arm_meta=_meta())
+    committed["arms"]["A"]["verified_rate"] = 99.0     # tamper
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps(committed), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match|recompute"):
+        replay_coding(path)
+
+
+def test_replay_hard_errors_on_tampered_token_counts(tmp_path):
+    # Cost is measured-once, so replay cannot recompute it from responses. It
+    # CAN verify the stored aggregate against the stored per-note values.
+    committed = build_committed_artifact(
+        arm_tallies={"A": {"n1": _tally(3, 1, 0)}, "B": {"n1": _tally(4, 0, 0)}},
+        agreement={"n1": 1.0}, strata={"n1": False}, comparison={},
+        run_meta=_run_meta(), arm_meta=_meta())
+    committed["arms"]["A"]["output_tokens"] = 999999
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps(committed), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match"):
+        replay_coding(path)
+
+
+def test_roster_is_a_separate_structure_from_the_artifact():
+    roster = build_roster([{"encounter_id": "n1", "arm": "A",
+                            "systems_seen": ["ICD-10"], "code": "E119",
+                            "model_description": "diabetes", "auto_cause": 1,
+                            "adjudication": ""}])
+    assert roster["columns"][0] == "encounter_id"
+    assert roster["rows"][0]["code"] == "E119"
+
+
+# The plan's executor notes require this: aggregate_arm (Chunk 2) and
+# aggregate_tallies (Chunk 7) are INDEPENDENT implementations of the same
+# pooled-rate math, kept as a double-entry check on headline-adjacent
+# arithmetic. Two independent implementations agreeing is the correctness
+# signal; this test is what makes them stay agreed.
+def test_the_two_aggregation_paths_agree(monkeypatch):
+    from governance.coding_metrics import aggregate_arm, dedupe_note
+    from shared.schemas import CodeSuggestion, CodingOutput
+
+    def _out(*pairs):
+        codes = [CodeSuggestion(system=s, code=c, description="d",
+                                vocabulary_status=vocab.classify(s, c))
+                 for s, c in pairs]
+        return CodingOutput(codes=codes, confidence=0.9,
+                            vocabulary_version=vocab.VOCAB_VERSION)
+
+    notes = [
+        _out(("ICD-10", "E11.9"), ("ICD-10", "M9999"), ("CPT", "99213")),
+        _out(("ICD-10", "I10"), ("ICD-10", "E11.9"), ("ICD-10", "NONE")),
+        _out(("CPT", "99213"),),
+        _out(("ICD-10", "J18.9"), ("ICD-10", "99213")),
+    ]
+    deduped = [dedupe_note(n) for n in notes]
+
+    summary = aggregate_arm(deduped)
+    tallies = [tally_from_deduped(d, input_tokens=1, output_tokens=2,
+                                  latency_ms=3) for d in deduped]
+    agg = aggregate_tallies(tallies)
+
+    assert agg["verified_rate"] == pytest.approx(summary.verified_rate, abs=1e-9)
+    assert agg["not_found_rate"] == pytest.approx(summary.not_found_rate, abs=1e-9)
+    assert agg["unchecked_share"] == pytest.approx(summary.unchecked_share, abs=1e-9)
+    assert agg["pessimistic_verified_rate"] == pytest.approx(
+        summary.pessimistic_verified_rate, abs=1e-9)
+    assert agg["codes_per_note"] == pytest.approx(summary.codes_per_note, abs=1e-9)
+    assert agg["n_checkable"] == summary.checkable
+
+
+def test_tally_from_deduped_causes_sum_to_not_found():
+    # Every not_found code lands in exactly one cause, which is what lets
+    # _rates_from_sums derive cause1 as the residual.
+    from governance.coding_metrics import dedupe_note
+    from shared.schemas import CodeSuggestion, CodingOutput
+    codes = [CodeSuggestion(system=s, code=c, description="d",
+                            vocabulary_status=vocab.classify(s, c))
+             for s, c in [("ICD-10", "M9999"), ("ICD-10", "NONE"),
+                          ("ICD-10", "99213"), ("ICD-10", "E11.9")]]
+    d = dedupe_note(CodingOutput(codes=codes, confidence=0.5,
+                                 vocabulary_version=vocab.VOCAB_VERSION))
+    t = tally_from_deduped(d, input_tokens=1, output_tokens=1, latency_ms=1)
+    assert t.cause1 + t.cause2 + t.cause3 + t.cause4 == t.not_found
+    assert t.not_found == 3 and t.verified == 1

@@ -11,18 +11,28 @@ NOT NULL foreign keys, and ACI ids are strings like D2N068 (spec §7).
 """
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
 
 from governance.aci_sections import SOAP_BUCKETS, bucket_sections
+from governance.coding_metrics import DedupedCode, floor_band, note_denominators
 from governance.llm_cache import Cache, cache_key
 from governance.structuring_eval import hash_prompt
 from services.agent_coding.agent import (
     CodingError, _MAX_TOKENS as CODING_MAX_TOKENS, _SYSTEM as CODING_SYSTEM,
     parse_and_enrich,
 )
+from shared import vocab
 from shared.llm import LLMResult, TruncatedResponseError, call_detailed
 from shared.schemas import SoapNote
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ARTIFACT_DIR = REPO_ROOT / "governance" / "eval_artifacts"
 
 
 def build_soap_from_reference(reference_note: str) -> SoapNote:
@@ -142,3 +152,181 @@ def attrition_length_summary(dropped_lengths: list[int],
         return {"n": len(s), "min": s[0], "median": median, "max": s[-1],
                 "mean": sum(s) / len(s)}
     return {"dropped": _summ(dropped_lengths), "retained": _summ(retained_lengths)}
+
+
+# ---------- the committed, code-free artifact and its replay ----------
+
+@dataclass(frozen=True)
+class NoteTally:
+    """One arm's verdict TALLIES for one note. Deliberately carries no codes:
+    a per-encounter diagnosis code is clinical data (spec §5e), so the codes
+    live in the gitignored roster and the committed artifact holds only counts
+    the rates recompute from."""
+    verified: int
+    not_found: int
+    unchecked: int
+    cause1: int
+    cause2: int
+    cause3: int
+    cause4: int
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int | None
+
+    def as_dict(self) -> dict:
+        return dict(verified=self.verified, not_found=self.not_found,
+                    unchecked=self.unchecked, cause1=self.cause1,
+                    cause2=self.cause2, cause3=self.cause3, cause4=self.cause4,
+                    input_tokens=self.input_tokens,
+                    output_tokens=self.output_tokens, latency_ms=self.latency_ms)
+
+
+def tally_from_deduped(deduped: list[DedupedCode], *, input_tokens: int,
+                       output_tokens: int, latency_ms: int | None,
+                       floor_members=None) -> NoteTally:
+    """Turn one note's deduped codes into the committed tally. The single place
+    per-note counts are produced, so the artifact and the guard statistics can
+    never come from two different countings."""
+    d = note_denominators(deduped)
+    band = floor_band(deduped, floor_members=floor_members)
+    return NoteTally(verified=d.verified, not_found=d.not_found,
+                     unchecked=d.unchecked, cause1=band.cause1,
+                     cause2=band.cause2, cause3=band.cause3, cause4=band.cause4,
+                     input_tokens=input_tokens, output_tokens=output_tokens,
+                     latency_ms=latency_ms)
+
+
+def _rates_from_sums(v: int, nf: int, un: int,
+                     c2: int, c3: int, c4: int) -> dict:
+    """Pooled rates in points from summed counts. The single arithmetic both
+    build and replay use, so a stored rate always recomputes from its tallies."""
+    checkable = v + nf
+    total = v + nf + un
+    vr = None if checkable == 0 else 100.0 * v / checkable
+    return {
+        "verified_rate": vr,
+        "not_found_rate": None if vr is None else 100.0 - vr,
+        "pessimistic_verified_rate": None if total == 0 else 100.0 * v / total,
+        "unchecked_share": None if total == 0 else 100.0 * un / total,
+        "floor_lower": 0.0 if checkable == 0 else 100.0 * (c4 + c3 + c2) / checkable,
+        "floor_upper": 0.0 if checkable == 0 else 100.0 * nf / checkable,
+        "n_verified": v, "n_not_found": nf, "n_unchecked": un,
+        "n_checkable": checkable, "n_codes_deduped": total,
+        "floor_cause_counts": {"cause1": (nf - c2 - c3 - c4),
+                               "cause2": c2, "cause3": c3, "cause4": c4},
+    }
+
+
+def _pctl(xs: list[int], p: int) -> float | None:
+    if not xs:
+        return None
+    return float(np.percentile(np.array(xs, float), p))
+
+
+def aggregate_tallies(tallies: list[NoteTally]) -> dict:
+    v = sum(t.verified for t in tallies)
+    nf = sum(t.not_found for t in tallies)
+    un = sum(t.unchecked for t in tallies)
+    c2 = sum(t.cause2 for t in tallies)
+    c3 = sum(t.cause3 for t in tallies)
+    c4 = sum(t.cause4 for t in tallies)
+    agg = _rates_from_sums(v, nf, un, c2, c3, c4)
+    agg["n_notes"] = len(tallies)
+    agg["codes_per_note"] = (agg["n_codes_deduped"] / len(tallies)
+                             if tallies else 0.0)
+    agg["input_tokens"] = sum(t.input_tokens for t in tallies)
+    agg["output_tokens"] = sum(t.output_tokens for t in tallies)
+    lat = [t.latency_ms for t in tallies if t.latency_ms is not None]
+    agg["latency_notes_contributing"] = len(lat)
+    agg["latency_p50"] = _pctl(lat, 50)
+    agg["latency_p95"] = _pctl(lat, 95)
+    return agg
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def build_committed_artifact(*, arm_tallies: dict[str, dict[str, NoteTally]],
+                             agreement: dict[str, float | None],
+                             strata: dict[str, bool], comparison: dict,
+                             run_meta: dict, arm_meta: dict) -> dict:
+    """The committed, code-free artifact. Per-note tallies + per-arm aggregates
+    + the top-level comparison block (spec §6)."""
+    arms: dict[str, dict] = {}
+    for arm, per_note in arm_tallies.items():
+        tallies = list(per_note.values())
+        agg = aggregate_tallies(tallies)
+        # per-stratum aggregates keyed on plan_empty (spec §3)
+        strat: dict[str, dict | None] = {}
+        for label, want in (("plan_empty", True), ("plan_nonempty", False)):
+            sub = [t for eid, t in per_note.items() if strata.get(eid) is want]
+            strat[label] = aggregate_tallies(sub) if sub else None
+        arms[arm] = {
+            **arm_meta[arm], **agg,
+            "prompt_version": _cache_version_string(arm_meta[arm]["requested_effort"]),
+            "max_tokens": CODING_MAX_TOKENS,
+            "per_stratum": strat,
+            "notes": {eid: t.as_dict() for eid, t in per_note.items()},
+        }
+    return {
+        "created_at": _utcnow(),
+        **run_meta,
+        "agreement": agreement,
+        "strata": strata,
+        "comparison": comparison,
+        "arms": arms,
+    }
+
+
+def build_roster(rows: list[dict]) -> dict:
+    """The gitignored .full.json roster: encounter id, arm, systems seen, code,
+    model_description, auto-classified cause, blank adjudication column
+    (spec §5e). rows are built by the caller from the deduped codes."""
+    return {"created_at": _utcnow(),
+            "columns": ["encounter_id", "arm", "systems_seen", "code",
+                        "model_description", "auto_cause", "adjudication"],
+            "rows": rows}
+
+
+def replay_coding(artifact: Path) -> dict:
+    """Recompute every per-arm rate from the stored per-note tallies and refuse
+    to agree with a stored aggregate it cannot reproduce. Hard-errors on a
+    vocab_version mismatch, because the vocabulary is correctly absent from the
+    response cache key but does change the verified rate (spec §6)."""
+    payload = json.loads(Path(artifact).read_text(encoding="utf-8"))
+
+    stored_vocab = payload.get("vocab_version")
+    if stored_vocab != vocab.VOCAB_VERSION:
+        raise ValueError(
+            f"Replay refuses: stored vocab_version {stored_vocab!r} differs from "
+            f"current {vocab.VOCAB_VERSION!r}. A warm-cache re-run under a bumped "
+            f"pin recomputes a different rate from byte-identical responses.")
+
+    out: dict[str, dict] = {}
+    for arm, block in payload["arms"].items():
+        tallies = [NoteTally(**{**t, "latency_ms": t.get("latency_ms")})
+                   for t in block["notes"].values()]
+        recomputed = aggregate_tallies(tallies)
+        for name in ("verified_rate", "not_found_rate",
+                     "pessimistic_verified_rate", "unchecked_share",
+                     "floor_lower", "floor_upper"):
+            stored = block.get(name)
+            got = recomputed[name]
+            if stored is None and got is None:
+                continue
+            if stored is None or got is None or abs(stored - got) > 1e-9:
+                raise ValueError(
+                    f"Replay does not match for arm {arm} {name}: recomputed "
+                    f"{got}, artifact stores {stored}. Edited artifact or a "
+                    f"metric change.")
+        # Cost/latency are measured-once: verify stored aggregates equal the
+        # recomputation from the stored per-note values, not from responses.
+        for name in ("input_tokens", "output_tokens",
+                     "latency_notes_contributing"):
+            if block.get(name) != recomputed[name]:
+                raise ValueError(
+                    f"Replay: stored {name} for arm {arm} does not match its "
+                    f"per-note values.")
+        out[arm] = recomputed
+    return out
