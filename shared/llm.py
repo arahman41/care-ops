@@ -4,8 +4,10 @@ Routing reflects the cost and accuracy analysis for this project:
   - note structuring : Sonnet 5, high effort (headline accuracy metric)
   - prior_auth        : Sonnet 5, high effort (bounded reasoning)
   - care_gap          : Haiku 4.5 (rules-based core, LLM only for phrasing)
-  - coding            : Sonnet 5 xhigh by default; benchmark Opus 4.8 and
-                        keep the winner on the held-out coding accuracy set
+  - coding            : Opus 4.8 at high, chosen by the P2-4 benchmark.
+                        That benchmark compared VERIFIED RATES, not coding
+                        accuracy: no held-out set carries gold billing
+                        codes, so there is no coding accuracy to measure.
   - transparency      : Haiku 4.5 (template fill)
   - eval_judge        : Haiku 4.5 at temperature 0. This one grades the
                         others, so it is pinned hard: no effort, no sampling.
@@ -35,6 +37,18 @@ from shared.config import settings
 
 _client = Anthropic(api_key=settings.anthropic_api_key)
 
+# coding: the P2-4 benchmark (artifact
+# governance/eval_artifacts/coding_20260807T214249Z.json, branch=inconclusive,
+# guard=floor_divergence) routed to claude-opus-4-8 at high. This is a
+# (model, effort) CONFIGURATION result, not a model result, and not a
+# coding-accuracy result.
+#
+# The branch was inconclusive, so the rule routes on COST, not on a
+# demonstrated quality win: 113 held-out notes gave a paired not-found-rate
+# difference of 0.70 points with a 95% BCa CI of [-0.73, 2.22], which neither
+# clears zero nor fits inside the pre-registered 1.5 point margin. Cost decided
+# it, at $3.16 against $6.01 over the same set. Latency agreed independently
+# (p50 15 s against 73 s), and so did the unresolved quality point estimate.
 ROUTING = {
     "structuring": (os.getenv("MODEL_STRUCTURING", "claude-sonnet-5"),
                     os.getenv("EFFORT_STRUCTURING", "high")),
@@ -42,8 +56,8 @@ ROUTING = {
                    os.getenv("EFFORT_PRIOR_AUTH", "high")),
     "care_gap": (os.getenv("MODEL_CARE_GAP", "claude-haiku-4-5-20251001"),
                  None),
-    "coding": (os.getenv("MODEL_CODING", "claude-sonnet-5"),
-               os.getenv("EFFORT_CODING", "xhigh")),
+    "coding": (os.getenv("MODEL_CODING", "claude-opus-4-8"),
+               os.getenv("EFFORT_CODING", "high")),
     "transparency": (os.getenv("MODEL_TRANSPARENCY", "claude-haiku-4-5-20251001"),
                      None),
     "eval_judge": (os.getenv("MODEL_EVAL_JUDGE", "claude-haiku-4-5-20251001"),

@@ -413,6 +413,59 @@ def test_assemble_run_note_pairs_align_with_analysis_ids_order():
     assert (run.note_pairs[1].nf_a, run.note_pairs[1].nf_b) == (1, 0)
 
 
+# ---------- the committed artifacts: CI regression-tests the routing numbers ----------
+
+COMMITTED_CODING = sorted(
+    p for p in cb.ARTIFACT_DIR.glob("coding_*.json")
+    if not p.name.endswith(".full.json"))
+
+
+@pytest.mark.skipif(not COMMITTED_CODING,
+                    reason="no coding artifact committed yet; the first real run writes one")
+@pytest.mark.parametrize("artifact", COMMITTED_CODING, ids=lambda p: p.stem)
+def test_a_committed_coding_artifact_still_recomputes_its_own_rates(artifact):
+    """Regression-test the published routing numbers, for free, on every CI run.
+
+    replay_coding recomputes every per-arm rate from the stored per-note
+    tallies and raises if it cannot reproduce what the artifact claims. So this
+    asserts that the committed comparison is still a fact and not a stale
+    claim, and it fails loudly if the vocabulary pin moves underneath it.
+    """
+    out = replay_coding(artifact)
+    assert out, "replay produced no arms"
+    for arm, agg in out.items():
+        # A rate that recomputes to None would mean an empty checkable
+        # denominator, which cannot be true of a run that named a winner.
+        assert agg["verified_rate"] is not None, f"arm {arm} has no checkable codes"
+        assert 0.0 <= agg["verified_rate"] <= 100.0
+        # Points, not proportions. A proportion-scale regression would put a
+        # real rate near 1.0 and silently break every threshold comparison.
+        assert agg["verified_rate"] + agg["not_found_rate"] == pytest.approx(100.0)
+        assert agg["n_notes"] > 0
+
+
+def test_committed_coding_artifact_carries_no_billing_codes():
+    """The committed artifact is code-free by construction (spec section 5e).
+    Codes live only in the gitignored .full.json roster."""
+    import re
+    code_re = re.compile(r"^[A-Z]\d{2,4}[A-Z0-9]*$|^\d{5}$|^\d{4}[A-Z]$")
+
+    def _strings(o):
+        if isinstance(o, dict):
+            for v in o.values():
+                yield from _strings(v)
+        elif isinstance(o, list):
+            for v in o:
+                yield from _strings(v)
+        elif isinstance(o, str):
+            yield o
+
+    for artifact in COMMITTED_CODING:
+        payload = json.loads(artifact.read_text(encoding="utf-8"))
+        leaked = [s for s in _strings(payload) if code_re.match(s.strip())]
+        assert not leaked, f"{artifact.name} leaked code-shaped strings: {leaked}"
+
+
 def test_tally_from_deduped_causes_sum_to_not_found():
     # Every not_found code lands in exactly one cause, which is what lets
     # _rates_from_sums derive cause1 as the residual.

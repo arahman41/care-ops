@@ -278,7 +278,10 @@ def test_replay_declines_placement_too_instead_of_resurrecting_the_fake_1(
 
 # ---------- the committed artifacts: CI regression-tests the headline ----------
 
-COMMITTED = sorted(p for p in se.ARTIFACT_DIR.glob("*.json")
+# Select structuring artifacts POSITIVELY by prefix. A bare *.json glob also
+# picks up P2-4's coding_*.json artifacts, which have a different shape and are
+# replayed by their own regression test in tests/test_coding_benchmark.py.
+COMMITTED = sorted(p for p in se.ARTIFACT_DIR.glob("structuring_*.json")
                    if not p.name.endswith(".full.json"))
 
 

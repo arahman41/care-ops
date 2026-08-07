@@ -67,20 +67,24 @@ def test_call_detailed_effort_override_reaches_the_outbound_request(monkeypatch)
 def test_default_model_and_effort_come_from_routing(monkeypatch):
     captured = _capture(monkeypatch)
     call_detailed("coding", system="s", user="u", max_tokens=100)
-    # ROUTING["coding"] default is (claude-sonnet-5, xhigh).
-    assert captured["model"] == "claude-sonnet-5"
-    assert captured["output_config"] == {"effort": "xhigh"}
+    # ROUTING["coding"] default is (claude-opus-4-8, high), set by the P2-4
+    # benchmark (artifact coding_20260807T214249Z.json). It was
+    # (claude-sonnet-5, xhigh) before that run. If this assertion fails,
+    # production coding routing moved: confirm it was a deliberate,
+    # evidence-backed change and not an accidental edit.
+    assert captured["model"] == "claude-opus-4-8"
+    assert captured["output_config"] == {"effort": "high"}
 
 
 def test_unset_effort_is_distinct_from_explicit_none(monkeypatch):
     # The sentinel distinction, tested on "coding" whose ROUTING effort is xhigh:
-    #   effort=_UNSET (or omitted) -> fall back to ROUTING -> output_config xhigh
+    #   effort=_UNSET (or omitted) -> fall back to ROUTING -> output_config high
     #   effort=None                -> explicit "no effort" -> NO output_config
     # A plain effort=None default would collide these two, sending no effort even
     # when the caller wanted the routed default.
     unset = _capture(monkeypatch)
     call_detailed("coding", system="s", user="u", max_tokens=100, effort=_UNSET)
-    assert unset["output_config"] == {"effort": "xhigh"}
+    assert unset["output_config"] == {"effort": "high"}
 
     explicit = _capture(monkeypatch)
     call_detailed("coding", system="s", user="u", max_tokens=100,
