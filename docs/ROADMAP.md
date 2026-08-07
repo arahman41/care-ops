@@ -49,6 +49,15 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
 - **P2-2 Care Gap Agent with a real rule set.** Replace the four placeholder rules with citable screening and follow-up guidelines. Done when each rule maps to a documented guideline source and the rules engine has unit tests for every rule firing and not firing.
 - **P2-3 Coding and Eligibility Agent.** Done when a SOAP note yields a valid CodingOutput, codes are presented as suggestions for human review, and eligibility flags are structured booleans.
 - **P2-4 Coding model routing benchmark.** Run Sonnet 5 at xhigh against Opus 4.8 at high on the held-out set. **This does not measure coding accuracy, and must never be described as if it does.** Neither ACI-Bench nor PriMock57 carries gold billing codes (`heldout_manifest.csv` is `dataset,encounter_id,split`; ACI-Bench is `dataset,encounter_id,dialogue,note`), so there is nothing to compute precision or recall of *correct* codes against. A model can score a perfect verified rate while suggesting codes that are clinically wrong for the note. What is measured: pooled verified rate (`shared/vocab.py::verified_rate`), `unchecked` share, inter-model agreement, and cost and latency. Done when the verified rate's floor is measured and stated FIRST (per the P2-3 spec section 1a: causes 2, 3, and 4 give it a nonzero floor unrelated to hallucination, so without the floor a small gap between two models is uninterpretable), both models' results are written to `eval_runs`, and the winner is recorded in `shared/llm.py` with a one-line note on why.
+
+  **Storage contract (forward-looking, added 2026-07-22).** P2-4 writes coding
+  `eval_runs` rows with `accuracy`, `f1`, `precision`, and `recall` all NULL,
+  and the verified rate in the `metrics` JSONB column. Any Phase 3 consumer
+  (P3-1 runner, P3-2 windows, P3-5 API, P4-1 dashboard) MUST tolerate an
+  all-NULL accuracy family and read coding numbers from `metrics`. As of
+  2026-07-22 there are no `eval_runs` SELECT readers anywhere in the repo, so
+  this is a contract on code not yet written, not a migration of existing code.
+
 - **P2-5 Containerize and deploy.** Done when each agent has its own image and Kubernetes Deployment plus Service, and `kubectl get pods -n care-ops` shows all three agents plus the orchestrator running with passing readiness probes.
 - **P2-6 LangGraph orchestration.** Done when `POST /run` on the orchestrator fans out to all three agents over in-cluster service DNS, an integration test verifies inter-service communication, and a single agent failure does not abort the other two.
 - **P2-7 Registry logging for every agent.** Done when every agent call writes a row to `agent_decisions` with input, output, confidence, model, effort, and latency, and a query by encounter id returns every decision.

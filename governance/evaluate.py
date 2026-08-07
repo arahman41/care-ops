@@ -11,6 +11,7 @@ cannot drift between callers:
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
@@ -143,5 +144,39 @@ def record_structuring_run(*, agent_name: str, model: str, window_label: str,
             (agent_name, model, window_label, dataset_ref, n_examples,
              metrics.get("accuracy"), metrics["f1"],
              metrics["precision"], metrics["recall"]),
+        ).fetchone()
+        return row[0]
+
+
+# ---------- P2-4: the coding routing benchmark ----------
+
+def coding_row_params(*, agent_name: str, model: str, model_effort: str,
+                      window_label: str, dataset_ref: str, n_examples: int,
+                      metrics: dict) -> tuple:
+    """Build the eval_runs row for one coding-benchmark arm.
+
+    accuracy/f1/precision/recall are NULL by construction: no held-out set
+    carries gold codes, so the verified rate lives only in the metrics JSONB
+    (spec §6). Pure and DB-free, so the NULL contract is unit-testable.
+    """
+    return (agent_name, model, model_effort, window_label, dataset_ref,
+            n_examples, None, None, None, None, json.dumps(metrics))
+
+
+def record_coding_run(*, agent_name: str, model: str, model_effort: str,
+                      window_label: str, dataset_ref: str, n_examples: int,
+                      metrics: dict) -> int:
+    """Write one coding-benchmark arm to eval_runs. Returns the row id."""
+    params = coding_row_params(
+        agent_name=agent_name, model=model, model_effort=model_effort,
+        window_label=window_label, dataset_ref=dataset_ref,
+        n_examples=n_examples, metrics=metrics)
+    with get_conn() as conn:
+        row = conn.execute(
+            "INSERT INTO eval_runs (agent_name, model, model_effort, "
+            "window_label, dataset_ref, n_examples, accuracy, f1, precision, "
+            "recall, metrics) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            params,
         ).fetchone()
         return row[0]
