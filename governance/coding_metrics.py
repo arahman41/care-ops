@@ -150,3 +150,62 @@ def floor_band(deduped: list[DedupedCode], floor_members=None) -> FloorBand:
         c4 += cause == 4
     return FloorBand(cause1=c1, cause2=c2, cause3=c3, cause4=c4,
                      checkable=denom.checkable, not_found=denom.not_found)
+
+
+@dataclass(frozen=True)
+class ArmSummary:
+    n_notes: int
+    verified: int
+    not_found: int
+    unchecked: int
+    checkable: int
+    total: int
+    codes_per_note: float
+
+    @property
+    def verified_rate(self) -> float | None:
+        r = vocab.verified_rate(self.verified, self.not_found)
+        return None if r is None else 100.0 * r
+
+    @property
+    def not_found_rate(self) -> float | None:
+        r = self.verified_rate
+        return None if r is None else 100.0 - r
+
+    @property
+    def pessimistic_verified_rate(self) -> float | None:
+        if self.total == 0:
+            return None
+        return 100.0 * self.verified / self.total
+
+    @property
+    def unchecked_share(self) -> float | None:
+        if self.total == 0:
+            return None
+        return 100.0 * self.unchecked / self.total
+
+
+def aggregate_arm(notes: list[list[DedupedCode]]) -> ArmSummary:
+    """Pool deduped per-note results into per-arm counts (spec §4 estimator:
+    a ratio of sums, never a mean of per-note rates)."""
+    v = nf = un = 0
+    for note in notes:
+        d = note_denominators(note)
+        v += d.verified
+        nf += d.not_found
+        un += d.unchecked
+    total = v + nf + un
+    n = len(notes)
+    return ArmSummary(n_notes=n, verified=v, not_found=nf, unchecked=un,
+                      checkable=v + nf, total=total,
+                      codes_per_note=(total / n if n else 0.0))
+
+
+def note_agreement(a: list[DedupedCode], b: list[DedupedCode]) -> float | None:
+    """Per-note Jaccard over normalized keys. None when neither arm emitted a
+    code, so it never enters an average as a spurious 0 or 1 (spec §1)."""
+    ka = {c.key for c in a}
+    kb = {c.key for c in b}
+    if not ka and not kb:
+        return None
+    return len(ka & kb) / len(ka | kb)

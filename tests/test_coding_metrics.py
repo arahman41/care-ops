@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from governance.coding_metrics import (
-    dedupe_note, floor_band, note_denominators,
+    aggregate_arm, dedupe_note, floor_band, note_agreement, note_denominators,
     _CODE_SHAPE_RE, _PLACEHOLDERS,
 )
 from shared.schemas import CodeSuggestion, CodingOutput
@@ -116,3 +116,46 @@ def test_floor_band_bounds_are_percentage_points():
     band = floor_band(dedupe_note(note))
     assert band.upper == pytest.approx(50.0)      # points, not 0.5
     assert band.lower == pytest.approx(0.0)       # no cause 3/4 here
+
+
+# ---------- pooled per-arm aggregation and agreement (Task 2.2) ----------
+
+
+def test_aggregate_is_pooled_ratio_of_sums_in_points():
+    # Note A: 1 verified, 1 not_found. Note B: 2 verified, 0 not_found.
+    # Pooled verified rate = 3/4 = 75 pts; not_found rate = 25 pts.
+    notes = [
+        dedupe_note(_out(("ICD-10", "E11.9"), ("ICD-10", "M9999"))),
+        dedupe_note(_out(("ICD-10", "E11.9"), ("ICD-10", "I10"))),
+    ]
+    s = aggregate_arm(notes)
+    assert s.verified_rate == pytest.approx(75.0)
+    assert s.not_found_rate == pytest.approx(25.0)
+    assert s.n_notes == 2 and s.checkable == 4
+
+
+def test_verified_rate_is_none_on_empty_checkable():
+    # All unchecked -> checkable 0 -> rate None, never 0.0 (spec §1, verified_rate).
+    notes = [dedupe_note(_out(("CPT", "99213")))]
+    s = aggregate_arm(notes)
+    assert s.verified_rate is None and s.not_found_rate is None
+
+
+def test_pessimistic_counts_unchecked_as_not_verified():
+    # 1 verified, 1 unchecked -> standard verified rate 100 pts (unchecked
+    # excluded); pessimistic 50 pts (unchecked counted against).
+    notes = [dedupe_note(_out(("ICD-10", "E11.9"), ("CPT", "99213")))]
+    s = aggregate_arm(notes)
+    assert s.verified_rate == pytest.approx(100.0)
+    assert s.pessimistic_verified_rate == pytest.approx(50.0)
+    assert s.unchecked_share == pytest.approx(50.0)
+
+
+def test_agreement_is_jaccard_over_normalized_keys():
+    a = dedupe_note(_out(("ICD-10", "E11.9"), ("ICD-10", "I10")))
+    b = dedupe_note(_out(("ICD-10", "E11.9"), ("ICD-10", "M9999")))
+    assert note_agreement(a, b) == pytest.approx(1 / 3)   # {E119} / {E119,I10,M9999}
+
+
+def test_agreement_is_none_when_neither_arm_emitted_a_code():
+    assert note_agreement([], []) is None
