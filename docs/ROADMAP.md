@@ -94,6 +94,34 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
   this is a contract on code not yet written, not a migration of existing code.
 
 - **P2-5 Containerize and deploy.** Done when each agent has its own image and Kubernetes Deployment plus Service, and `kubectl get pods -n care-ops` shows all three agents plus the orchestrator running with passing readiness probes.
+
+  **DONE 2026-08-07.** All 6 pods (postgres, intake, orchestrator, and the 3
+  agents) `1/1 Running`, 0 restarts, stable over 2+ minutes. `readinessProbe`
+  confirmed genuinely configured (not absent-default) via `kubectl describe`,
+  and cross-service Kubernetes DNS confirmed working: the orchestrator pod
+  reached `agent-coding` by Service name and got a real `/health` response.
+  `db/schema.sql` applied to the in-cluster Postgres for the first time (5
+  tables created clean, no "already exists").
+
+  **Real bug found and fixed along the way, not a deployment artifact:** local
+  `.env` has `ANTHROPIC_API_KEY= sk-ant-...` with a stray space after `=`.
+  `python-dotenv`/pydantic-settings silently strips that whitespace, which is
+  why every local run all through P2-4 worked fine. `kubectl create secret
+  --from-env-file` does **not** strip it, so the literal leading space landed
+  in the secret and every outbound call from the coding agent pod died with
+  `httpx.LocalProtocolError: Illegal header value b' sk-ant-...'` surfaced as
+  an opaque `anthropic.APIConnectionError` two layers up. Fixed by trimming at
+  the point the secret's temp env file is built, not by editing `.env`
+  (`.venv` and Docker Compose both tolerate the space; only kubectl's env-file
+  loader doesn't). **Any future secret rotation for this cluster must trim
+  whitespace the same way, or the failure returns silently** as a connection
+  error that looks like a network problem, not a header problem.
+
+  A synthetic end-to-end smoke test (fake `encounter_id: 1`) then reached a
+  real model call and a real `CodingOutput` parse before failing on a
+  legitimate `agent_decisions` foreign-key constraint, since no such encounter
+  exists yet. That is correct behavior, not a P2-5 gate blocker, and is
+  P2-6/P2-7's job to exercise with real data.
 - **P2-6 LangGraph orchestration.** Done when `POST /run` on the orchestrator fans out to all three agents over in-cluster service DNS, an integration test verifies inter-service communication, and a single agent failure does not abort the other two.
 - **P2-7 Registry logging for every agent.** Done when every agent call writes a row to `agent_decisions` with input, output, confidence, model, effort, and latency, and a query by encounter id returns every decision.
 
