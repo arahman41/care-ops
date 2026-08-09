@@ -11,7 +11,8 @@ import httpx
 
 from shared.config import settings
 
-from services.orchestrator.graph import _agent_url, _describe, _merge_errors
+from services.orchestrator.graph import (AGENTS, PipelineState, _GRAPH,
+                                         _agent_url, _describe, _merge_errors)
 
 URL = "http://agent-coding:8000/run"
 
@@ -97,3 +98,29 @@ def test_agent_url_is_read_per_call_not_frozen_at_import(monkeypatch):
 def test_agent_url_tolerates_a_trailing_slash(monkeypatch):
     monkeypatch.setattr(settings, "coding_url", "http://127.0.0.1:9999/")
     assert _agent_url("coding_url") == "http://127.0.0.1:9999/run"
+
+
+# ---------- the compiled graph's shape ----------
+
+def test_the_graph_has_exactly_one_node_per_agent():
+    real = {n for n in _GRAPH.nodes if not n.startswith("__")}
+    assert real == {"call_prior_auth", "call_care_gap", "call_coding"}
+
+
+def test_every_node_name_differs_from_the_state_key_it_writes():
+    """langgraph 0.2.60 raised ValueError on a collision. 1.2.10 permits it.
+    The prefix is kept as a convention: a node is an action, a state key is an
+    artifact."""
+    keys = set(PipelineState.__annotations__)
+    assert {n for n in _GRAPH.nodes if not n.startswith("__")}.isdisjoint(keys)
+
+
+def test_state_carries_a_key_for_every_agent_plus_errors():
+    assert set(PipelineState.__annotations__) == {
+        "payload", "prior_auth", "care_gap", "coding", "errors"}
+
+
+def test_every_agent_is_wired_to_its_own_schema():
+    assert {a[0] for a in AGENTS} == {"prior_auth", "care_gap", "coding"}
+    assert [a[2].__name__ for a in AGENTS] == [
+        "PriorAuthOutput", "CareGapOutput", "CodingOutput"]
