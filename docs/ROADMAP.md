@@ -123,6 +123,79 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
   exists yet. That is correct behavior, not a P2-5 gate blocker, and is
   P2-6/P2-7's job to exercise with real data.
 - **P2-6 LangGraph orchestration.** Done when `POST /run` on the orchestrator fans out to all three agents over in-cluster service DNS, an integration test verifies inter-service communication, and a single agent failure does not abort the other two.
+
+  **DONE 2026-08-09.** Spec
+  `docs/superpowers/specs/2026-08-09-p2-6-langgraph-orchestration-design.md`,
+  plan `docs/superpowers/plans/2026-08-09-p2-6-langgraph-orchestration.md`.
+  319 passed / 1 xfailed, ruff clean, `services/orchestrator` at 100% line
+  coverage.
+
+  Before this task the orchestrator was a sequential `for` loop over
+  `httpx.Client.post` whose docstring claimed "in parallel", and
+  `langgraph==0.2.60` was pinned but imported nowhere, so P2-5's healthy pods
+  were never evidence the dependency worked. It is now a compiled
+  `StateGraph`: `START` fans out to three `call_<agent>` nodes in one
+  superstep and joins at `END`.
+
+  | Gate clause | Evidence |
+  |---|---|
+  | fans out to all three agents | live run below, and `test_all_three_agents_answer_over_real_http` |
+  | over in-cluster service DNS | live run below, `errors` names `http://agent-coding:8000/run` |
+  | integration test verifies inter-service communication | 3 stub agents on real uvicorn sockets, artifacts out and `AgentInput` confirmed received |
+  | a single agent failure does not abort the other two | 5 failure classes in pytest, plus the live injected failure below |
+
+  **Live in-cluster run** (encounter 1, note 1, seeded first because
+  `agent_decisions` has FKs to both `encounters` and `notes`):
+
+  - Healthy: `HTTP 200 in 5.66s`, `errors {}`, all three artifacts. prior-auth
+    `MRI lumbar spine`; care-gap `A1C_MONITORING`; coding `E11.9` and `M54.16`
+    verified, CPT `72148` and `83036` `unchecked`.
+  - `kubectl scale deployment/agent-coding --replicas=0`: `HTTP 200 in 3.70s`,
+    prior-auth and care-gap still returned, `coding` null, and
+    `errors.coding = "ConnectError calling http://agent-coding:8000/run: All
+    connection attempts failed"`. The URL in that string is the point: without
+    it a cluster DNS fault is indistinguishable from an agent bug.
+  - Restored to 1 replica: `HTTP 200 in 5.74s`, `errors {}`, coding recovered.
+
+  **Concurrency is proved twice, by independent means.** In pytest by interval
+  overlap (`max(starts) < min(ends)`), which is a real overlap proof rather
+  than a flake-prone wall-clock threshold. In the cluster by the registry's own
+  latency column: run 1's agents summed to 9,652 ms of work (care-gap 1,
+  prior-auth 4,284, coding 5,367) but the request returned in 5,661 ms, just
+  over the slowest agent. Sequential execution was arithmetically impossible.
+
+  **Two real bugs fixed, not just a refactor.**
+  1. Agent responses were validated at `PipelineResult` construction, so one
+     agent's schema-invalid `200` raised inside FastAPI and destroyed all three
+     artifacts. Each node now validates against its own contract, in the node.
+  2. Failures were recorded as `str(exc)`, and `str(httpx.ReadTimeout(""))` is
+     the empty string, so the single most likely cluster failure wrote nothing
+     to the audit trail. One `_describe` helper now always names the exception
+     class and the failing URL.
+
+  The `errors` channel carries a reducer because three nodes can write it in
+  one superstep. This was mutation-checked: with the reducer removed, the
+  two-agents-down test fails with `InvalidUpdateError: At key 'errors': Can
+  receive only one value per step`, so the test detects the reducer rather than
+  passing either way.
+
+  **langgraph upgraded 0.2.60 to 1.2.10, whole family pinned** in both
+  `requirements-dev.txt` and `services/orchestrator/requirements.txt`. The old
+  pin left transitives floating onto `langgraph-checkpoint 2.1.2`, a 2025
+  release against a Dec-2024 langgraph. Verified on Python 3.12 inside the
+  rebuilt image, not only on the 3.10 local venv.
+
+  **Found along the way, and NOT a P2-6 deliverable:**
+  - **The in-cluster Postgres has no PersistentVolumeClaim.** `k8s/postgres.yaml`
+    declares no volume at all, so the container restart when Docker started
+    wiped all five tables created in P2-5. `db/schema.sql` had to be reapplied
+    before this run. **P2-7 stores the audit trail and Phase 3 needs two
+    windows of data over time; both are impossible on an ephemeral database.**
+    Fix the PVC before P2-7.
+  - **No `.dockerignore` existed**, so every `docker build` shipped a 4.9 GB
+    context to the daemon, including 3.9 GB of PriMock57 clinical audio that no
+    Dockerfile copies. Added one that keeps only `data/vocab/` (200 KB), which
+    is the sole `data/` path any image needs. Build now takes 44s.
 - **P2-7 Registry logging for every agent.** Done when every agent call writes a row to `agent_decisions` with input, output, confidence, model, effort, and latency, and a query by encounter id returns every decision.
 
 **Exit gate:** a note submitted to the orchestrator returns all three structured artifacts, each logged, with the pipeline surviving a single injected agent failure.
