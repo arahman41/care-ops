@@ -169,3 +169,78 @@ def test_the_three_agents_run_concurrently_not_in_sequence(client, monkeypatch):
         f"agents did not overlap, so the fan-out is sequential: {marks}")
     # Corroborating, deliberately loose: sequential would be >= 1.2s.
     assert wall < delay * 3
+
+
+# ---------- failure isolation, one test per failure class ----------
+
+def _assert_isolated(out: dict, failed: set[str]) -> None:
+    """Whatever broke, every other agent still produced its artifact."""
+    assert set(out["errors"]) == failed, out["errors"]
+    for agent in {"prior_auth", "care_gap", "coding"} - failed:
+        assert out[agent] is not None, f"{agent} was taken down with {failed}"
+    for agent in failed:
+        assert out[agent] is None
+        assert out["errors"][agent], "an error entry must not be empty"
+
+
+def test_a_502_from_one_agent_does_not_abort_the_others(client, monkeypatch):
+    with StubAgent(agent_app("prior_auth")) as pa, \
+         StubAgent(agent_app("care_gap")) as cg, \
+         StubAgent(agent_app("coding", status=502)) as co:
+        point_at(monkeypatch, prior_auth=pa.url, care_gap=cg.url,
+                 coding=co.url)
+        out = client.post("/run", json=PAYLOAD).json()
+    _assert_isolated(out, {"coding"})
+    assert "502" in out["errors"]["coding"]
+
+
+def test_an_agent_that_is_not_listening_does_not_abort_the_others(
+        client, monkeypatch):
+    with StubAgent(agent_app("prior_auth")) as pa, \
+         StubAgent(agent_app("care_gap")) as cg:
+        point_at(monkeypatch, prior_auth=pa.url, care_gap=cg.url,
+                 coding=f"http://127.0.0.1:{closed_port()}")
+        out = client.post("/run", json=PAYLOAD).json()
+    _assert_isolated(out, {"coding"})
+
+
+def test_a_hung_agent_times_out_without_taking_the_others(client, monkeypatch):
+    monkeypatch.setattr(settings, "agent_timeout_seconds", 0.3)
+    with StubAgent(agent_app("prior_auth")) as pa, \
+         StubAgent(agent_app("care_gap")) as cg, \
+         StubAgent(agent_app("coding", delay=5.0)) as co:
+        point_at(monkeypatch, prior_auth=pa.url, care_gap=cg.url,
+                 coding=co.url)
+        out = client.post("/run", json=PAYLOAD).json()
+    _assert_isolated(out, {"coding"})
+    assert "Timeout" in out["errors"]["coding"]
+    assert "0.3s" in out["errors"]["coding"]
+
+
+def test_a_schema_invalid_200_is_caught_at_the_node(client, monkeypatch):
+    """The regression this exists for: raw agent JSON used to flow into
+    PipelineResult, so one malformed 200 raised at response construction and
+    destroyed all three artifacts."""
+    with StubAgent(agent_app("prior_auth")) as pa, \
+         StubAgent(agent_app("care_gap")) as cg, \
+         StubAgent(agent_app("coding", body={"nonsense": True})) as co:
+        point_at(monkeypatch, prior_auth=pa.url, care_gap=cg.url,
+                 coding=co.url)
+        resp = client.post("/run", json=PAYLOAD)
+    assert resp.status_code == 200, "a malformed agent must not 500 the pipeline"
+    _assert_isolated(resp.json(), {"coding"})
+    assert "ValidationError" in resp.json()["errors"]["coding"]
+
+
+def test_two_agents_failing_at_once_still_leaves_the_third(client, monkeypatch):
+    """Without a reducer on the `errors` channel this raises
+    InvalidUpdateError inside LangGraph and aborts the whole graph, including
+    the healthy agent."""
+    with StubAgent(agent_app("prior_auth", status=502)) as pa, \
+         StubAgent(agent_app("care_gap")) as cg, \
+         StubAgent(agent_app("coding", status=500)) as co:
+        point_at(monkeypatch, prior_auth=pa.url, care_gap=cg.url,
+                 coding=co.url)
+        out = client.post("/run", json=PAYLOAD).json()
+    _assert_isolated(out, {"prior_auth", "coding"})
+    assert out["care_gap"]["gaps"][0]["rule_id"] == "A1C_MONITORING"
