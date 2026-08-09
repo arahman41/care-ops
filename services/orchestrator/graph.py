@@ -18,12 +18,20 @@ from __future__ import annotations
 
 import httpx
 
+from shared.config import settings
+
 
 def _merge_errors(left: dict[str, str],
                   right: dict[str, str]) -> dict[str, str]:
     """Reducer for the `errors` channel. Returns a new dict: mutating `left`
     would corrupt the channel value mid-superstep."""
     return {**left, **right}
+
+
+def _agent_url(setting_name: str) -> str:
+    """Resolved per call, never at import: a module-level constant freezes the
+    cluster DNS name and makes the setting unoverridable."""
+    return f"{getattr(settings, setting_name).rstrip('/')}/run"
 
 
 _BODY_CHARS = 200

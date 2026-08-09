@@ -11,7 +11,7 @@ import httpx
 
 from shared.config import settings
 
-from services.orchestrator.graph import _describe, _merge_errors
+from services.orchestrator.graph import _agent_url, _describe, _merge_errors
 
 URL = "http://agent-coding:8000/run"
 
@@ -79,3 +79,21 @@ def test_a_connect_error_keeps_its_own_detail():
     msg = _describe(httpx.ConnectError("connection refused"), URL, 60.0)
     assert "ConnectError" in msg
     assert "connection refused" in msg
+
+
+# ---------- URL resolution ----------
+
+def test_agent_url_defaults_to_the_kubernetes_service_dns_name():
+    assert _agent_url("coding_url") == "http://agent-coding:8000/run"
+
+
+def test_agent_url_is_read_per_call_not_frozen_at_import(monkeypatch):
+    """The integration test retargets these at localhost stubs. If the URL is
+    computed at import time, that silently keeps hitting the cluster names."""
+    monkeypatch.setattr(settings, "coding_url", "http://127.0.0.1:9999")
+    assert _agent_url("coding_url") == "http://127.0.0.1:9999/run"
+
+
+def test_agent_url_tolerates_a_trailing_slash(monkeypatch):
+    monkeypatch.setattr(settings, "coding_url", "http://127.0.0.1:9999/")
+    assert _agent_url("coding_url") == "http://127.0.0.1:9999/run"
