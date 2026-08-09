@@ -126,6 +126,14 @@ def client():
     return TestClient(app)
 
 
+def test_health_returns_ok(client):
+    """Matches the convention in every other service's app test, and it is
+    what the Kubernetes readiness and liveness probes call."""
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "service": "orchestrator"}
+
+
 def test_all_three_agents_answer_over_real_http(client, monkeypatch):
     received: dict = {}
     with StubAgent(agent_app("prior_auth", received=received)) as pa, \
