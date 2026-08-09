@@ -1,5 +1,14 @@
 -r requirements.txt
 -r governance/requirements.txt
+# P2-6: mirrored from services/orchestrator/requirements.txt so CI exercises
+# the real compiled graph. Without this, tests import langgraph and fail at
+# collection while the image builds fine, or worse, the graph is never tested.
+langgraph==1.2.10
+langgraph-checkpoint==4.2.0
+langgraph-prebuilt==1.1.0
+langgraph-sdk==0.4.2
+langchain-core==1.5.3
+langchain-protocol==0.0.18
 faster-whisper==1.1.0
 pytest==8.3.4
 pytest-asyncio==0.25.0
