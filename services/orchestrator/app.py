@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from shared.schemas import AgentInput, PipelineResult
+from shared.registry import decisions_for_encounter
+from shared.schemas import AgentInput, DecisionRecord, PipelineResult
 from services.orchestrator.graph import run_agents
 
 app = FastAPI(title="Care Ops Copilot - Orchestrator")
@@ -27,3 +28,14 @@ async def run(inp: AgentInput):
         coding=out["coding"],
         errors=out["errors"],
     )
+
+
+@app.get("/encounters/{encounter_id}/decisions",
+        response_model=list[DecisionRecord])
+def get_decisions(encounter_id: int):
+    # Synchronous, not async: one blocking psycopg call, no fan-out, unlike
+    # /run. No existence check against `encounters`: an id with no
+    # decisions yet and an id that was never created both legitimately
+    # return []. See spec section 3 for why that is a stated
+    # simplification rather than an oversight.
+    return decisions_for_encounter(encounter_id)

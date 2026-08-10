@@ -240,6 +240,44 @@ def test_a_schema_invalid_200_is_caught_at_the_node(client, monkeypatch):
     assert "ValidationError" in resp.json()["errors"]["coding"]
 
 
+# ---------- P2-7: the audit-trail read endpoint ----------
+#
+# decisions_for_encounter is monkeypatched here; the real query is already
+# proven against a real database in tests/test_registry.py. This is about
+# the HTTP surface: status code, response shape, the empty-list case.
+
+def test_get_decisions_returns_the_persisted_rows(client, monkeypatch):
+    from datetime import datetime, timezone
+    stub_rows = [{
+        "agent_name": "prior_auth", "note_id": 1, "model": "claude-sonnet-5",
+        "model_effort": "high", "input_ref": {"subjective": "s"},
+        "output": {"items": []}, "confidence": 0.75, "latency_ms": 4284,
+        "created_at": datetime.now(timezone.utc),
+    }]
+    monkeypatch.setattr("services.orchestrator.app.decisions_for_encounter",
+                        lambda encounter_id: stub_rows)
+
+    resp = client.get("/encounters/1/decisions")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["agent_name"] == "prior_auth"
+    assert body[0]["model_effort"] == "high"
+
+
+def test_get_decisions_for_an_unknown_encounter_is_an_empty_list_not_404(
+        client, monkeypatch):
+    """No existence check against `encounters`: an id with no decisions
+    yet and an id that was never created both return [] with 200. A
+    stated simplification for a debugging endpoint, not an oversight."""
+    monkeypatch.setattr("services.orchestrator.app.decisions_for_encounter",
+                        lambda encounter_id: [])
+    resp = client.get("/encounters/999999/decisions")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_two_agents_failing_at_once_still_leaves_the_third(client, monkeypatch):
     """Without a reducer on the `errors` channel this raises
     InvalidUpdateError inside LangGraph and aborts the whole graph, including
