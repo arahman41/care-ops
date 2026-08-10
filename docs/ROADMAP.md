@@ -186,12 +186,30 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
   rebuilt image, not only on the 3.10 local venv.
 
   **Found along the way, and NOT a P2-6 deliverable:**
-  - **The in-cluster Postgres has no PersistentVolumeClaim.** `k8s/postgres.yaml`
-    declares no volume at all, so the container restart when Docker started
+  - **The in-cluster Postgres had no PersistentVolumeClaim.** `k8s/postgres.yaml`
+    declared no volume at all, so the container restart when Docker started
     wiped all five tables created in P2-5. `db/schema.sql` had to be reapplied
     before this run. **P2-7 stores the audit trail and Phase 3 needs two
     windows of data over time; both are impossible on an ephemeral database.**
-    Fix the PVC before P2-7.
+
+    **FIXED 2026-08-09, before starting P2-7.** A 5Gi `ReadWriteOnce` PVC on
+    kind's default `standard` (`rancher.io/local-path`) StorageClass, bound and
+    mounted at `/var/lib/postgresql/data`. Three details that are not
+    decoration: the Deployment strategy is `Recreate`, because the default
+    `RollingUpdate` deadlocks on a RWO volume when the new pod waits for a
+    volume the old pod will not release; `PGDATA` points at a `pgdata`
+    subdirectory of the mount, because `initdb` refuses a non-empty directory
+    and a volume root can carry `lost+found`; and Postgres finally has
+    `pg_isready` readiness and liveness probes, without which the pod reports
+    Ready before it accepts connections and anything run straight after
+    `kubectl rollout status`, schema application included, fails
+    intermittently.
+
+    Verified by destruction, not by inspection: a sentinel row was inserted,
+    the pod deleted outright (`postgres-845d954dbb-xlhg7`), and after the
+    replacement came up (`...-wk4d8`) both the row and all five tables were
+    still there. The sentinel was then removed, leaving the database clean for
+    P2-7.
   - **No `.dockerignore` existed**, so every `docker build` shipped a 4.9 GB
     context to the daemon, including 3.9 GB of PriMock57 clinical audio that no
     Dockerfile copies. Added one that keeps only `data/vocab/` (200 KB), which

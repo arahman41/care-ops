@@ -18,3 +18,15 @@ These manifests target a local cluster (kind or minikube). Steps:
 4. Apply everything: `kubectl apply -f k8s/`
 5. Verify: `kubectl get pods -n care-ops` shows db, intake, orchestrator,
    and the three agent services running with passing readiness probes.
+6. Load the schema: `kubectl exec -n care-ops -i deploy/postgres -- psql -U care_ops -d care_ops -f - < db/schema.sql`
+
+## Database persistence
+
+Postgres stores its data in a 5Gi PVC (`postgres-data`) on kind's default
+`standard` StorageClass, so the database survives pod restarts and rescheduling.
+Before this was added, every container restart silently destroyed the schema
+and the entire audit trail.
+
+`kind delete cluster` still destroys the volume: the StorageClass reclaim
+policy is `Delete` and the data lives on the kind node. The PVC protects
+against pod churn, not against tearing down the cluster.
