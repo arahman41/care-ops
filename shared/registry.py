@@ -25,9 +25,14 @@ def log_decision(*, encounter_id: int, note_id: int, agent_name: str,
 
 
 def decisions_for_encounter(encounter_id: int) -> list[dict]:
+    """Every field required by the P2-7 gate (input, output, confidence,
+    model, effort, latency), plus note_id: it is already stored on every
+    row and is the join key back to `notes`, so leaving it out would make
+    this a half-finished audit trail."""
     with get_conn() as conn:
         cur = conn.execute(
-            "SELECT agent_name, model, output, confidence, created_at "
+            "SELECT agent_name, note_id, model, model_effort, input_ref, "
+            "       output, confidence, latency_ms, created_at "
             "FROM agent_decisions WHERE encounter_id = %s ORDER BY created_at",
             (encounter_id,),
         )
