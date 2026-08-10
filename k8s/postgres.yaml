@@ -1,3 +1,25 @@
+# The cluster database. Found during P2-6: this Deployment previously
+# declared no volume at all, so Postgres wrote to the container's writable
+# layer and every container restart destroyed the database. All five tables
+# created in P2-5 were gone after Docker Desktop restarted, and db/schema.sql
+# had to be reapplied before P2-6 could be verified.
+#
+# That is fatal for what comes next. P2-7 stores the audit trail in
+# agent_decisions, and Phase 3 drift detection needs at least two windows of
+# eval_runs separated in time. Neither survives an ephemeral database.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: care-ops
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+  # No storageClassName: kind's default is `standard`
+  # (rancher.io/local-path), which binds WaitForFirstConsumer.
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +27,11 @@ metadata:
   namespace: care-ops
 spec:
   replicas: 1
+  # Recreate, not the default RollingUpdate. A ReadWriteOnce volume can only
+  # be mounted by one node at a time, so a rolling update deadlocks: the new
+  # pod waits for a volume the old pod has not released, and the old pod is
+  # never terminated because the new one never becomes ready.
+  strategy: {type: Recreate}
   selector: {matchLabels: {app: postgres}}
   template:
     metadata: {labels: {app: postgres}}
@@ -16,7 +43,30 @@ spec:
             - {name: POSTGRES_DB, value: care_ops}
             - {name: POSTGRES_USER, value: care_ops}
             - {name: POSTGRES_PASSWORD, value: change_me}
+            # initdb refuses to run in a directory that is not empty, and a
+            # mounted volume root can carry lost+found. Keeping PGDATA in a
+            # subdirectory of the mount is the standard way to avoid that.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
           ports: [{containerPort: 5432}]
+          volumeMounts:
+            - {name: postgres-data, mountPath: /var/lib/postgresql/data}
+          # Without a readiness probe the pod reports Ready as soon as the
+          # container starts, which is before Postgres accepts connections.
+          # Anything that runs immediately after `kubectl rollout status`,
+          # including applying the schema, then fails intermittently.
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, care_ops, -d, care_ops]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, care_ops, -d, care_ops]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim: {claimName: postgres-data}
 ---
 apiVersion: v1
 kind: Service
