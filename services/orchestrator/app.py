@@ -15,8 +15,10 @@ def health():
 
 
 @app.post("/run", response_model=PipelineResult)
-def run(inp: AgentInput):
-    out = run_agents(inp.model_dump())
+async def run(inp: AgentInput):
+    # run_agents is a coroutine. Calling it without await returns a coroutine
+    # object and every artifact silently becomes a validation error.
+    out = await run_agents(inp.model_dump())
     return PipelineResult(
         encounter_id=inp.encounter_id,
         note_id=inp.note_id,

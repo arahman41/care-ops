@@ -1,3 +1,12 @@
 -r ../../requirements.txt
-langgraph==0.2.60
-langchain-core==0.3.28
+# P2-6: the whole langgraph family is pinned, not just langgraph. The previous
+# `langgraph==0.2.60` left its transitives floating, so a rebuild resolved
+# langgraph-checkpoint 2.1.2, a 2025 release against a Dec-2024 langgraph and a
+# combination nobody upstream tests. These six versions were verified together
+# against this repo's pydantic/fastapi/httpx pins with `pip check` clean.
+langgraph==1.2.10
+langgraph-checkpoint==4.2.0
+langgraph-prebuilt==1.1.0
+langgraph-sdk==0.4.2
+langchain-core==1.5.3
+langchain-protocol==0.0.18

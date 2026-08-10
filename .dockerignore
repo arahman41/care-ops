@@ -1,0 +1,46 @@
+# P2-6: without this the build context was 4.9GB, since every `docker build`
+# uploads the whole repo root to the daemon before running a single COPY.
+#
+# What the images actually need is small and is listed explicitly in each
+# Dockerfile: requirements.txt, shared/, that service's own directory, and for
+# agent_coding only, data/vocab/ (200KB of vendored CMS releases).
+#
+# The rest is not just wasted bytes. data/primock57 is 3.8GB of clinical audio
+# and data/aci-bench is 86MB of clinical text. Neither is COPYed by any
+# Dockerfile, and neither belongs in an image layer. Keep it that way.
+
+# Virtualenv and VCS
+.venv/
+.git/
+.gitignore
+
+# Clinical datasets. data/vocab is re-included below: agent_coding needs it.
+data/*
+!data/vocab/
+
+# Evaluation artifacts. The .full.json siblings carry clinical text.
+governance/eval_artifacts/
+
+# Caches and build detritus
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.egg-info/
+
+# Not used at runtime by any service
+tests/
+docs/
+dashboard/
+scripts/
+k8s/
+.github/
+.claude/
+*.md
+docker-compose.yml
+Makefile
+
+# Local secrets. .env is gitignored but exists on disk, and a build context
+# is not a place for an API key.
+.env
