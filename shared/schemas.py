@@ -6,6 +6,7 @@ free text, and every artifact carries a confidence score in [0, 1].
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field, computed_field
 
@@ -146,3 +147,21 @@ class PipelineResult(BaseModel):
     care_gap: CareGapOutput | None = None
     coding: CodingOutput | None = None
     errors: dict[str, str] = Field(default_factory=dict)
+
+
+# ---------- Layer 3: audit trail read path ----------
+
+class DecisionRecord(BaseModel):
+    """One row from agent_decisions, as returned by a query-by-encounter
+    lookup (shared/registry.py::decisions_for_encounter). Not the same
+    shape as PriorAuthOutput etc: this is the audit envelope around a
+    decision, not the decision's own artifact schema."""
+    agent_name: str
+    note_id: int
+    model: str
+    model_effort: str | None
+    input_ref: dict
+    output: dict
+    confidence: float
+    latency_ms: int | None
+    created_at: datetime
