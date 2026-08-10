@@ -216,7 +216,59 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
     is the sole `data/` path any image needs. Build now takes 44s.
 - **P2-7 Registry logging for every agent.** Done when every agent call writes a row to `agent_decisions` with input, output, confidence, model, effort, and latency, and a query by encounter id returns every decision.
 
+  **DONE 2026-08-10.** Spec
+  `docs/superpowers/specs/2026-08-09-p2-7-registry-logging-design.md`, plan
+  `docs/superpowers/plans/2026-08-09-p2-7-registry-logging.md`. 325 passed /
+  1 xfailed, ruff clean.
+
+  The write side was already correct going in: all three agents were already
+  calling `log_decision` with real models, confidences, and latencies,
+  confirmed during P2-6's live verification. The read side was not: nothing
+  called `shared/registry.py::decisions_for_encounter`, and when checked its
+  `SELECT` turned out to return only 5 of the 8 stored columns, silently
+  dropping `model_effort`, `input_ref`, and `latency_ms`. Caught by
+  `tests/test_registry.py` against a real Postgres (a mocked connection
+  cannot catch a dropped `SELECT` column), then fixed and exposed as
+  `GET /encounters/{id}/decisions` on the orchestrator.
+
+  | Gate clause | Evidence |
+  |---|---|
+  | every agent call writes input, output, confidence, model, effort, latency | already true (P2-1/P2-2/P2-3); reconfirmed live below |
+  | a query by encounter id returns every decision | the `SELECT` fix, `test_registry.py`, and the live call below |
+
+  **Live in-cluster run**, orchestrator image rebuilt to include the new
+  endpoint (encounter 26, note 25, seeded fresh since the prior encounter was
+  cleaned up during the PVC fix's own verification):
+
+  - `POST /run`: `HTTP 200 in 6.95s`, `errors {}`, all three artifacts.
+  - `GET /encounters/26/decisions`: `HTTP 200`, exactly 3 rows, one per
+    agent. `care_gap` reads back `model="rules-v1"`, `model_effort=null`,
+    `latency_ms=20`; `prior_auth` reads back `model="claude-sonnet-5"`,
+    `model_effort="high"`, `latency_ms=3947`; `coding` reads back
+    `model="claude-opus-4-8"`, `model_effort="high"`, `latency_ms=6472`.
+    Every row's `input_ref` carried the full SOAP note and `output` carried
+    that agent's real structured artifact.
+  - `GET /encounters/999999/decisions`: `HTTP 200`, `[]`. The documented
+    simplification (no existence check against `encounters`) confirmed live,
+    not only in pytest.
+
+  **One process note, not a code finding.** Merging P2-6's PR with
+  `--delete-branch` deleted `p2-6-langgraph-orchestration`, which was the
+  base branch of the still-open Postgres PVC fix PR. GitHub auto-closed that
+  PR rather than merging it, and its commit did not land on `main`. GitHub
+  also refuses to reopen a PR whose base branch no longer exists and refuses
+  to retarget a closed PR's base, so the fix was to open a fresh PR
+  (`#7`, same commit `d7faa5e`) targeting `main` directly. **Do not
+  `--delete-branch` on a PR that is any other open PR's base**, or repeat
+  this recovery.
+
 **Exit gate:** a note submitted to the orchestrator returns all three structured artifacts, each logged, with the pipeline surviving a single injected agent failure.
+
+**MET 2026-08-10.** P2-6 proved the fan-out and the injected-failure
+survival (`kubectl scale deployment/agent-coding --replicas=0`, the other
+two agents still returned, `errors.coding` set, then full recovery). P2-7
+proved every artifact is logged and independently queryable by encounter id,
+live, in the same cluster. Phase 2 is complete.
 **Metric unlocked:** Kubernetes service count, and the coding model routing decision backed by verified rate, `unchecked` share, agreement, and cost and latency.
 
 Not "per-agent decision accuracy". Accuracy is only claimable where a labeled reference set exists, and for the coding agent none does (see P2-4). The care-gap agent's rules are deterministic and unit-tested, which is a correctness property rather than a measured accuracy. Before claiming an accuracy number for any agent, name the labeled set it was measured against.
