@@ -84,6 +84,21 @@ Response (`PipelineResult`):
   "errors": { "coding": "reason a given agent failed, if any" } }
 ```
 
+`GET /encounters/{encounter_id}/decisions` returns every logged decision for
+that encounter as `list[DecisionRecord]`, ordered by `created_at`. No
+existence check against `encounters`: an id with no decisions yet and an id
+that was never created both return `[]` with `200`.
+
+Response (`list[DecisionRecord]`):
+```json
+[ { "agent_name": "prior_auth", "note_id": 1, "model": "claude-sonnet-5",
+    "model_effort": "high", "input_ref": {"...": "the SOAP note"},
+    "output": {"...": "PriorAuthOutput"}, "confidence": 0.75,
+    "latency_ms": 3947, "created_at": "2026-08-10T08:40:48Z" },
+  { "agent_name": "care_gap", "model": "rules-v1", "model_effort": null,
+    "...": "..." } ]
+```
+
 ### 3.3 Agents (uniform contract)
 
 Each agent exposes `POST /run`, accepts the same `AgentInput`, and returns its own structured output. The uniform input shape is what lets the orchestrator treat the three agents as interchangeable nodes.
