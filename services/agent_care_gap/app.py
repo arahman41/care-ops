@@ -32,7 +32,12 @@ def run_endpoint(inp: AgentInput):
     latency_ms = int((time.perf_counter() - started) * 1000)
     log_decision(
         encounter_id=inp.encounter_id, note_id=inp.note_id,
-        agent_name="care_gap", model="rules-v1", effort=None,
+        agent_name="care_gap", model="rules-v1",
+        effort=None,  # deterministic rules engine, not an LLM call: no
+                      # effort level exists to record. NULL is the honest
+                      # value here, not a fabricated "n/a" string. Locked
+                      # in by tests/test_registry.py::
+                      # test_a_rules_engine_decision_reads_back_effort_as_none
         input_ref=inp.soap.model_dump(), output=out.model_dump(),
         confidence=confidence, latency_ms=latency_ms,
     )
