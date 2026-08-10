@@ -95,3 +95,19 @@ def test_an_encounter_with_no_decisions_returns_an_empty_list(
         encounter_and_note):
     encounter_id, _ = encounter_and_note
     assert decisions_for_encounter(encounter_id) == []
+
+
+@needs_db
+def test_a_rules_engine_decision_reads_back_effort_as_none(encounter_and_note):
+    """The one intentional NULL in the schema: care_gap has no effort
+    level, and this must stay NULL rather than drift to a sentinel string.
+    See services/agent_care_gap/app.py for why."""
+    encounter_id, note_id = encounter_and_note
+    log_decision(
+        encounter_id=encounter_id, note_id=note_id, agent_name="care_gap",
+        model="rules-v1", effort=None,
+        input_ref={}, output={"gaps": []}, confidence=0.9, latency_ms=1,
+    )
+
+    row = decisions_for_encounter(encounter_id)[0]
+    assert row["model_effort"] is None
