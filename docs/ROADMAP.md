@@ -60,6 +60,16 @@ Rough total: 7 to 9 weeks part-time for Phases 0 through 4, with Phase 5 as opti
   | A | claude-sonnet-5 at xhigh | 96.65 | 3.35 | 37.05 | 7.14 | $6.01 |
   | B | claude-opus-4-8 at high | 97.35 | 2.65 | 37.08 | 8.50 | $3.16 |
 
+  **Cost correction, 2026-08-31 (found during P3-2).** Those two figures were
+  computed against a `governance/pricing.json` entry of $3/$15 for Sonnet 5,
+  a rate that never took effect: $2/$10 became the standard price and the
+  scheduled September increase was cancelled. Recomputed from this run's own
+  token counts, arm A is **$4.01**, not $6.01; arm B is unchanged at $3.16.
+  Opus 4.8 at high stays the cheaper configuration, so **the routing decision
+  below does not change**, but the margin is $0.84 rather than $2.85. The
+  figures in this table are left as reported, because they are what the run
+  measured under the table of the day.
+
   Paired delta nf(A)-nf(B) = 0.70 points, 95% BCa CI [-0.73, 2.22], seed
   20260722, 10,000 replicates. Branch **inconclusive** (guard
   `floor_divergence`), so the rule routed on **cost** to
@@ -389,6 +399,88 @@ Not "per-agent decision accuracy". Accuracy is only claimable where a labeled re
   n=7, too small to quote as a headline beside ACI-Bench's n=120; P3-4 decides
   what may be said about it.
 - **P3-2 Two windows of data.** Done when at least one agent has accuracy stored for at least two distinct versions or time windows, so a trend exists to plot.
+
+  **DONE 2026-08-31.** Spec
+  `docs/superpowers/specs/2026-08-31-p3-2-two-windows-design.md`, plan
+  `docs/superpowers/plans/2026-08-31-p3-2-two-windows.md`. 386 passed /
+  1 xfailed (from 368), ruff clean.
+
+  | id | window | n | f1 | recall | precision | accuracy | measured |
+  |---|---|---|---|---|---|---|---|
+  | 7 | v1 | 120 | 0.868563 | 0.785649 | 0.971044 | 0.879658 | 2026-07-14 |
+  | 25 | 2026-08-w5 | 120 | 0.873771 | 0.792919 | 0.972984 | 0.884425 | 2026-08-31 |
+
+  Window 2 cost **$4.55** over 120 encounters, inside the $4.30 to $5.30 the
+  pilot projected. Artifact
+  `governance/eval_artifacts/structuring_aci-bench-heldout-v1_20260831T205449Z.json`.
+
+  **The task turned out not to be the paid run.** Measured before writing any
+  code, free: **all 120 held-out structuring calls were already cached.**
+  `cache_key` covers the model, prompt version and payload but NOT the window,
+  and P3-1 defined a window as a point in time with the generation
+  configuration held FIXED, so two windows are the same key by construction.
+  Running window 2 that day would have replayed July's notes, reproduced its
+  metrics bit-identically, filed them under today's date, and passed
+  `replay()`, P3-1's guard and CI. P3-3 would then have been "validated"
+  against two copies of one measurement. Nothing in the system detected this.
+
+  Two independent guards now close it, failing for different reasons so
+  neither masks the other. Both verified live, not only in pytest:
+
+  | Guard | Evidence |
+  |---|---|
+  | 1, causal: a window served from cache is refused | the real run reports `structure 120 generated, 0 from cache` |
+  | 2, symptomatic: two windows may not share counts | filing window 2's own artifact under `2026-09-FAKE` was refused and inserted nothing, row count 5 before and after |
+
+  Windows get their own cache directory rather than the label being folded
+  into the key, because the flat cache also holds P2-4's coding entries and
+  this project has already lost a run to a key changed underneath it. Nothing
+  was migrated; the legacy cache still holds its 2,804 files. Whisper
+  transcripts stay shared, being local, deterministic, and not the model under
+  test.
+
+  **The delta must not be called drift, and P3-3 has to honor three reasons.**
+  F1 moved +0.005208. That is not yet interpretable:
+
+  1. **The two windows are not certified comparable.**
+     `differing_fields` returns `('max_tokens',)`, because July's cap was never
+     recorded and window 2's is 8000. This is the P3-1 design working as
+     intended on its first real use, not a defect.
+  2. **The sampling baseline is unmeasured.** Effort-driven calls sample, so
+     two runs of the identical configuration differ even with no vendor
+     change. Establishing that baseline needs a same-day repeat run, a second
+     paid run, and it was deliberately **not** done here.
+  3. **The measuring instrument moved too.** The reference notes are byte
+     identical across both windows, yet decomposition produced **6,553**
+     reference facts against July's **6,550**. The judge and decomposer are
+     model calls, so part of any observed delta is instrument variation rather
+     than a change in what is being measured. A drift metric that attributes
+     all of it to the model is wrong.
+
+  **Two findings outside the task's scope, both verified rather than assumed.**
+  `governance/pricing.json` was pricing Sonnet 5 at $3/$15, a rate that never
+  took effect: the published table records that $2/$10 became standard and the
+  September increase was cancelled. Recomputing P2-4 from its own token counts
+  gives arm A $4.01 rather than the reported $6.01, arm B unchanged at $3.16,
+  so **the P2-4 routing branch does not flip** but the margin narrows from
+  $2.85 to $0.84. Haiku 4.5 was absent from the table entirely, which is why
+  the structuring harness could never cost itself; it is the pinned judge.
+  A committed price table goes stale silently, and a cost-based routing
+  decision sits on top of this one.
+
+  Second, a `--limit` smoke run used to write its artifact into
+  `governance/eval_artifacts/` under a filename indistinguishable from a real
+  measurement, so a five-encounter probe sat beside the 120-encounter window
+  looking exactly like it. Found while running this task's pilot and squarely
+  its business. Partial runs now go to a gitignored `smoke/` subdirectory.
+
+  **Smaller things worth keeping.** Sonnet made 122 calls for 120 encounters:
+  two bounded resamples, matching the known ~1/120 invalid-JSON rate. 40 of
+  1,436 decompose calls were cache hits **within** the run, which is identical
+  section text across encounters deduplicating, not a cross-window leak; the
+  namespace was empty at start. Structuring at high effort emits about 936
+  output tokens per note, nothing like the 6,477 P2-4 measured for coding at
+  xhigh, which is why this run was cheap.
 - **P3-3 Drift detection.** Done when `governance/drift.py` compares a reference window against a current window and, given an injected accuracy or confidence drop in a controlled test, flags it. The test in `tests/test_drift.py` passes.
 - **P3-4 Transparency report generator.** Done when `governance/transparency.py` produces a report from real `model_inventory` data using ONC HTI-1 style fields, mapped to real disclosure language where possible.
 - **P3-5 Governance API.** Expose read endpoints for inventory, accuracy trend, and the transparency report so the dashboard has real data. Done when each endpoint returns registry-backed JSON, no mocked values.
