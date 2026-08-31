@@ -37,6 +37,8 @@ whisper_cache/
 # number recomputes from those alone.
 governance/.cache/
 governance/eval_artifacts/*.full.json
+# Partial (--limit) runs. Not measurements, so not committed beside them.
+governance/eval_artifacts/smoke/
 
 # Node
 node_modules/

@@ -52,15 +52,43 @@ from governance.judge import (
     judge_support,
 )
 from governance.llm_cache import Cache, cache_key
+from governance.pricing import cost_usd, load_price_table
 from services.intake.structure import MAX_TOKENS, SYSTEM_PROMPT, structure_note
-from shared.llm import ROUTING
+from shared.llm import ROUTING, recording_usage
 from shared.schemas import SoapNote
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_DIR = REPO_ROOT / "governance" / "eval_artifacts"
+# Partial runs land here instead, gitignored. A --limit smoke run used to write
+# into ARTIFACT_DIR under a filename indistinguishable from a real one, so a
+# five-encounter probe sat beside the 120-encounter measurement looking exactly
+# like it. Found while running P3-2's pilot, and squarely this task's business:
+# a partial measurement must not be mistakable for a window.
+SMOKE_ARTIFACT_DIR = ARTIFACT_DIR / "smoke"
 CACHE_DIR = REPO_ROOT / "governance" / ".cache"
+WINDOW_CACHE_DIR = CACHE_DIR / "windows"
 
 AGENT_NAME = "note_structuring"
+
+
+def window_cache(window_label: str) -> Cache:
+    """The cache namespace for one window (P3-2).
+
+    cache_key covers the model, prompt version and payload but NOT the window,
+    and P3-1 defined a window as a point in time with the generation
+    configuration held FIXED. Two windows are therefore the same key by
+    construction: run a second window against the first one's cache and every
+    call is a hit, the harness replays July's notes, and the metrics come back
+    bit-identical. That would put two copies of one measurement on a drift
+    trend and call it a trend.
+
+    Namespacing by directory rather than by folding the label into the key,
+    because the existing flat cache also holds P2-4's coding entries and this
+    project has already lost one run to a cache key changed underneath it.
+    Nothing is migrated: window 1 stays at the root, later windows live here,
+    and the asymmetry is documented rather than tidied away.
+    """
+    return Cache(WINDOW_CACHE_DIR / window_label)
 
 
 def generate_soap(transcript: str, cache: Cache) -> tuple[SoapNote, str, str | None]:
@@ -82,7 +110,7 @@ def generate_soap(transcript: str, cache: Cache) -> tuple[SoapNote, str, str | N
     version = f"{effort}|{hash_prompt(SYSTEM_PROMPT)}|max{MAX_TOKENS}"
     key = cache_key("structure", model, version, transcript)
 
-    cached = cache.get(key)
+    cached = cache.get(key, "structure")
     if cached is not None:
         return SoapNote.model_validate_json(cached), model, effort
 
@@ -136,6 +164,13 @@ class RunResult:
     # PriMock57 only: recall of the human-authored `highlights` key concepts.
     highlights_found: int = 0
     highlights_total: int = 0
+
+    # P3-2. cache_stats is how a reader tells a freshly generated window from
+    # one replayed out of another window's cache; usage and cost are what let
+    # a run say what it cost, which the structuring harness could never do.
+    cache_stats: dict = field(default_factory=dict)
+    usage: dict = field(default_factory=dict)
+    cost_usd: float | None = None
 
     @property
     def counts(self) -> StructuringCounts:
@@ -206,6 +241,26 @@ def _evaluate_one(example: HeldoutExample, cache: Cache) -> ExampleResult:
     )
 
 
+def run_cost(usage: dict) -> float | None:
+    """Cost of a run from its per-model token totals, or None if unpriceable.
+
+    None rather than a partial sum when any model is missing from
+    governance/pricing.json, following that module's own rule: an understated
+    cost is worse than no cost, because it looks like an answer. The judge was
+    exactly this case until P3-2 added Haiku 4.5 to the table.
+    """
+    table = load_price_table()
+    if table is None or not usage:
+        return None
+    total = 0.0
+    for model, counts in usage.items():
+        if model not in table.prices:
+            return None
+        total += cost_usd(table, model, counts["input_tokens"],
+                          counts["output_tokens"])
+    return total
+
+
 def locked_digest(lock_path: Path = DEFAULT_LOCK_PATH) -> str:
     """The split digest recorded in the committed lock file.
 
@@ -228,17 +283,20 @@ def evaluate_examples(examples: list[HeldoutExample], cache: Cache,
     """
     results: list[ExampleResult] = []
 
-    if examples:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(_evaluate_one, ex, cache) for ex in examples]
-            for future in as_completed(futures):
-                result = future.result()      # re-raises
-                results.append(result)
-                if on_done:
-                    on_done(result)
+    with recording_usage() as usage:
+        if examples:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_evaluate_one, ex, cache)
+                           for ex in examples]
+                for future in as_completed(futures):
+                    result = future.result()      # re-raises
+                    results.append(result)
+                    if on_done:
+                        on_done(result)
 
-        # Stable order regardless of thread completion order.
-        results.sort(key=lambda r: r.encounter_id)
+            # Stable order regardless of thread completion order.
+            results.sort(key=lambda r: r.encounter_id)
+        usage_totals = usage.as_dict()
 
     # Take the model from the pipeline that actually ran, not from ROUTING, so
     # the artifact records what produced the number rather than what we assume.
@@ -253,6 +311,12 @@ def evaluate_examples(examples: list[HeldoutExample], cache: Cache,
         structuring_effort=effort,
         split_digest=split_digest if split_digest is not None else locked_digest(),
         examples=results,
+        # Same shape as the PriMock path, which additionally carries a
+        # "transcribe" namespace. One shape means the P3-2 guard has one thing
+        # to read rather than two cases to get right.
+        cache_stats={"window": cache.stats()},
+        usage=usage_totals,
+        cost_usd=run_cost(usage_totals),
     )
 
 
@@ -269,7 +333,7 @@ def transcribe_primock(example: HeldoutExample, cache: Cache,
     key = cache_key("transcribe", f"whisper-{model_size}", "v1",
                     "|".join(str(p) for p in example.audio))
 
-    cached = cache.get(key)
+    cached = cache.get(key, "transcribe")
     if cached is not None:
         return cached
 
@@ -283,8 +347,14 @@ def transcribe_primock(example: HeldoutExample, cache: Cache,
 
 
 def _evaluate_primock_one(example: HeldoutExample, cache: Cache,
-                          model_size: str) -> tuple[ExampleResult, int, int]:
-    transcript = transcribe_primock(example, cache, model_size)
+                          model_size: str,
+                          transcribe_cache: Cache) -> tuple[ExampleResult, int, int]:
+    # Transcription reads from a cache SHARED across windows, everything after
+    # it from the window's own. Whisper runs locally, is not the hosted model
+    # under test, and the audio never changes, so re-transcribing would buy
+    # nothing and cost two hours of CPU. Every hosted call below it is
+    # window-scoped, so the window stays a coherent snapshot.
+    transcript = transcribe_primock(example, transcribe_cache, model_size)
     soap, model, effort = generate_soap(transcript, cache)
 
     # No section headers in a GP note, so every bucket is acceptable and
@@ -320,7 +390,8 @@ def _evaluate_primock_one(example: HeldoutExample, cache: Cache,
 
 def evaluate_primock(examples: list[HeldoutExample], cache: Cache,
                      model_size: str = "base", workers: int = 4,
-                     on_done=None) -> RunResult:
+                     on_done=None, transcribe_cache: Cache | None = None
+                     ) -> RunResult:
     """Score the PriMock57 held-out consultations from audio.
 
     This is the Phase 1 exit gate's end-to-end path: wav files in, Whisper,
@@ -331,20 +402,24 @@ def evaluate_primock(examples: list[HeldoutExample], cache: Cache,
     """
     results: list[ExampleResult] = []
     found = total = 0
+    transcribe_cache = cache if transcribe_cache is None else transcribe_cache
 
-    if examples:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(_evaluate_primock_one, ex, cache, model_size)
-                       for ex in examples]
-            for future in as_completed(futures):
-                result, n_found, n_total = future.result()
-                results.append(result)
-                found += n_found
-                total += n_total
-                if on_done:
-                    on_done(result)
+    with recording_usage() as usage:
+        if examples:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_evaluate_primock_one, ex, cache,
+                                       model_size, transcribe_cache)
+                           for ex in examples]
+                for future in as_completed(futures):
+                    result, n_found, n_total = future.result()
+                    results.append(result)
+                    found += n_found
+                    total += n_total
+                    if on_done:
+                        on_done(result)
 
-        results.sort(key=lambda r: r.encounter_id)
+            results.sort(key=lambda r: r.encounter_id)
+        usage_totals = usage.as_dict()
 
     if results:
         model, effort = results[0].model, results[0].effort
@@ -360,6 +435,12 @@ def evaluate_primock(examples: list[HeldoutExample], cache: Cache,
         placement_scored=False,
         highlights_found=found,
         highlights_total=total,
+        # Merged so the window's own hosted-call activity is visible even
+        # though transcription was served from the shared namespace.
+        cache_stats={"window": cache.stats(),
+                     "transcribe": transcribe_cache.stats()},
+        usage=usage_totals,
+        cost_usd=run_cost(usage_totals),
     )
 
 
@@ -389,6 +470,12 @@ def _redacted(result: RunResult) -> dict:
             "support": SUPPORT_PROMPT_VERSION,
         },
         "n_examples": len(result.examples),
+        # P3-2: the evidence that this window was generated rather than
+        # replayed. A window with structure hits and no misses is another
+        # window wearing a new label.
+        "cache_stats": result.cache_stats,
+        "usage": result.usage,
+        "cost_usd": result.cost_usd,
         "fused_ap_notes": result.fused_notes,
         "strict_n": result.strict_n,
         "placement_scored": result.placement_scored,

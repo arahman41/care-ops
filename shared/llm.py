@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+import threading
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 
 from anthropic import Anthropic
 
@@ -126,6 +128,93 @@ def extract_json(raw: str) -> dict | list:
 _UNSET = object()
 
 
+# ---------- P3-2: opt-in token accounting ----------
+#
+# Every call site already funnels through call_detailed, which already has the
+# usage numbers, so one hook here gives the whole project cost accounting
+# without touching a single caller. The structuring harness has never been able
+# to say what a run cost; P3-2 has to report that for window 2, and P4-3 and
+# P4-5 need the same thing.
+#
+# Off unless installed, because accounting that is always on is state that can
+# silently leak between runs.
+
+_usage_lock = threading.Lock()
+_usage_recorder: "UsageRecorder | None" = None
+
+
+@dataclass
+class ModelUsage:
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # The ids the API said actually ran, which need not equal the alias asked
+    # for. Kept so a silent model substitution under a headline number is
+    # visible rather than averaged away.
+    observed: set = field(default_factory=set)
+
+
+class UsageRecorder:
+    """Accumulates token usage, keyed on the REQUESTED model alias.
+
+    Keyed on the requested alias because that is what governance/pricing.py
+    prices, and because a plan budgets for a family rather than for whichever
+    dated snapshot served the request.
+
+    Thread-safe: the structuring harness fans out over eight workers, so an
+    unsynchronised counter would undercount by however many increments raced.
+    """
+
+    def __init__(self) -> None:
+        self.by_model: dict[str, ModelUsage] = {}
+
+    def _record(self, requested: str, observed: str,
+                input_tokens: int, output_tokens: int) -> None:
+        usage = self.by_model.setdefault(requested, ModelUsage())
+        usage.calls += 1
+        usage.input_tokens += input_tokens
+        usage.output_tokens += output_tokens
+        usage.observed.add(observed)
+
+    @property
+    def calls(self) -> int:
+        return sum(u.calls for u in self.by_model.values())
+
+    def as_dict(self) -> dict:
+        return {
+            model: {
+                "calls": u.calls,
+                "input_tokens": u.input_tokens,
+                "output_tokens": u.output_tokens,
+                "observed_models": sorted(u.observed),
+            }
+            for model, u in sorted(self.by_model.items())
+        }
+
+
+@contextmanager
+def recording_usage():
+    """Record token usage for every call made inside the block.
+
+    Nesting raises rather than silently double-counting into two recorders,
+    which would make a cost report quietly wrong in the direction of cheap.
+    """
+    global _usage_recorder
+    with _usage_lock:
+        if _usage_recorder is not None:
+            raise RuntimeError(
+                "usage recording is already active. Nesting would double-count "
+                "every call into both recorders and understate nothing "
+                "visibly, so it is refused instead.")
+        recorder = UsageRecorder()
+        _usage_recorder = recorder
+    try:
+        yield recorder
+    finally:
+        with _usage_lock:
+            _usage_recorder = None
+
+
 @dataclass(frozen=True)
 class LLMResult:
     text: str
@@ -187,13 +276,21 @@ def call_detailed(component: str, system: str, user: str,
 
     text = "".join(block.text for block in resp.content
                    if getattr(block, "type", None) == "text")
-    return LLMResult(
+    result = LLMResult(
         text=text,
         model=resp.model,                    # what actually ran
         input_tokens=resp.usage.input_tokens,
         output_tokens=resp.usage.output_tokens,
         stop_reason=resp.stop_reason,
     )
+
+    # Recorded after the truncation check, so a run's accounting counts only
+    # the calls whose output was actually usable.
+    with _usage_lock:
+        if _usage_recorder is not None:
+            _usage_recorder._record(model, result.model,
+                                    result.input_tokens, result.output_tokens)
+    return result
 
 
 def call(component: str, system: str, user: str,

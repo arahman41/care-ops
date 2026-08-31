@@ -88,7 +88,7 @@ def run_arm_on_note(soap: SoapNote, model: str, effort: str,
     payload = soap.model_dump_json()
     key = _cache_key(model, effort, payload)
 
-    cached = cache.get(key)
+    cached = cache.get(key, "coding")
     if cached is not None:
         result = LLMResult.from_json(cached)
         latency_ms = None

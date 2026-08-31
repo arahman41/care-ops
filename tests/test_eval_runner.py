@@ -241,6 +241,23 @@ def clean_window():
         conn.execute("DELETE FROM eval_runs WHERE window_label = %s", (WINDOW,))
 
 
+@pytest.fixture
+def filed_rows():
+    """Collects row ids to remove, rather than deleting by window label.
+
+    These two round trips file the real July artifacts, and rows 7 and 8 hold
+    that same measurement permanently under label 'v1'. P3-2's guard 2 refuses
+    a duplicate measurement under a DIFFERENT label, so these must file under
+    'v1' too, which means cleanup cannot delete by label without destroying
+    the real windows.
+    """
+    ids: list[int] = []
+    yield ids
+    with get_conn() as conn:
+        for row_id in ids:
+            conn.execute("DELETE FROM eval_runs WHERE id = %s", (row_id,))
+
+
 def _row(row_id: int) -> dict:
     with get_conn() as conn:
         cur = conn.execute(
@@ -251,9 +268,10 @@ def _row(row_id: int) -> dict:
 
 
 @needs_db
-def test_the_aci_window_round_trips_with_the_july_timestamp(clean_window):
+def test_the_aci_window_round_trips_with_the_july_timestamp(filed_rows):
     row_id = score_artifact(agent_name="note_structuring", artifact_path=ACI,
-                            window_label=clean_window)
+                            window_label="v1")
+    filed_rows.append(row_id)
 
     row = _row(row_id)
     assert row["agent_name"] == "note_structuring"
@@ -273,9 +291,10 @@ def test_the_aci_window_round_trips_with_the_july_timestamp(clean_window):
 
 @needs_db
 def test_the_primock_window_stores_a_null_accuracy_beside_real_metrics(
-        clean_window):
+        filed_rows):
     row_id = score_artifact(agent_name="note_structuring",
-                            artifact_path=PRIMOCK, window_label=clean_window)
+                            artifact_path=PRIMOCK, window_label="v1")
+    filed_rows.append(row_id)
 
     row = _row(row_id)
     assert row["accuracy"] is None, (

@@ -68,7 +68,7 @@ def _decompose_text(text: str, cache: Cache) -> list[str]:
     model, _ = ROUTING["eval_judge"]
     key = cache_key(_TASK, model, PROMPT_VERSION, text)
 
-    raw = cache.get(key)
+    raw = cache.get(key, _TASK)
     if raw is None:
         raw = call("eval_judge", system=_SYSTEM, user=text,
                    max_tokens=1500, temperature=0)
