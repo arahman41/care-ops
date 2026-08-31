@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS eval_runs (
     f1              REAL,
     precision       REAL,
     recall          REAL,
+    -- P3-1: this is WHEN THE MEASUREMENT WAS TAKEN, not when the row was
+    -- inserted. governance/evaluate.py::record_eval_run always writes it
+    -- explicitly, from the artifact's own created_at. The default is a
+    -- fallback for hand-written rows only. It matters because P1-4's July
+    -- measurement was backfilled in August: under the default it would sit at
+    -- the newest end of the trend and P3-3 would read the drift backwards.
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
