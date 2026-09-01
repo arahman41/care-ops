@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.8796581,
+  "agent_name": "note_structuring",
+  "created_at": "2026-07-14T03:24:03.553557+00:00",
+  "dataset_ref": "aci-bench-heldout-v1",
+  "f1": 0.86856335,
+  "id": 1,
+  "metrics": null,
+  "model": "claude-sonnet-5",
+  "model_effort": null,
+  "n_examples": 120,
+  "precision": 0.97104377,
+  "recall": 0.7856489,
+  "window_label": "v1"
+}

@@ -188,8 +188,9 @@ def test_an_empty_run_does_not_divide_by_zero(cache):
 #
 # Publishing that 1.0 in eval_runs.accuracy would be the single most dishonest
 # number this project could emit, and it would look like the best result on the
-# board. RunResult.metrics reports None instead, and record_structuring_run
-# writes SQL NULL. These pin that, because the failure is silent.
+# board. RunResult.metrics reports None instead, and record_eval_run writes SQL
+# NULL. These pin that, because the failure is silent. tests/test_eval_runner.py
+# pins the other end, that the None survives the trip into eval_runs.
 
 def _freetext_result() -> se.RunResult:
     """A PriMock-shaped run: every bucket acceptable, so placement is a no-op."""
@@ -237,8 +238,8 @@ def test_the_artifact_and_the_db_row_both_carry_the_declined_placement():
 
     assert payload["placement_scored"] is False
     assert payload["metrics"]["accuracy"] is None
-    # record_structuring_run passes metrics.get("accuracy") straight through to
-    # a nullable column, so None here is what becomes SQL NULL.
+    # record_eval_run passes metrics.get("accuracy") straight through to a
+    # nullable column, so None here is what becomes SQL NULL.
     assert payload["metrics"].get("accuracy", "missing") is None
 
     # And the highlights recall, which is what PriMock57 is actually scored on,

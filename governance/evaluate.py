@@ -8,15 +8,183 @@ cannot drift between callers:
 
   score()             binary classification, for the Phase 2 and 3 agents
   score_structuring() free-text SOAP notes, for the P1-4 headline metric
+
+P3-1 adds a third thing to this file: the policy about which agents are
+allowed to have an accuracy at all, and the single guarded writer every
+eval_runs INSERT goes through. That lives here rather than in the runner
+because it is policy about what a metric is permitted to MEAN, which is this
+file's stated domain, and because it keeps the import edge one-way:
+eval_runner imports evaluate, never the reverse.
 """
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
+from governance.heldout import ACI_DATASET_REF, PRIMOCK_DATASET_REF
 from shared.db import get_conn
+
+
+# ---------- P3-1: who is allowed an accuracy, and who is not ----------
+
+# The four columns eval_runs reserves for "this agent was scored against
+# labels". Order matters: it lines up with coding_row_params' tuple slice.
+ACCURACY_FAMILY = ("accuracy", "f1", "precision", "recall")
+
+
+@dataclass(frozen=True)
+class ScoreableAgent:
+    """An agent that has a labeled reference set on the held-out split."""
+
+    agent_name: str
+    dataset_refs: tuple[str, ...]   # the sets it may legitimately be scored on
+    labels_are: str                 # what the labels ARE, in words
+
+
+SCOREABLE: dict[str, ScoreableAgent] = {
+    "note_structuring": ScoreableAgent(
+        agent_name="note_structuring",
+        dataset_refs=(ACI_DATASET_REF, PRIMOCK_DATASET_REF),
+        labels_are=(
+            "clinician-written reference notes. Recall is scored against the "
+            "note, precision against the transcript. See score_structuring."),
+    ),
+}
+
+# agent_name -> why it has no accuracy. The reason is carried into the
+# exception, so a caller that trips the guard is told what is missing rather
+# than only that it was refused.
+UNSCOREABLE: dict[str, str] = {
+    "coding": (
+        "no held-out set carries gold billing codes. Neither ACI-Bench nor "
+        "PriMock57 labels ICD/CPT, so there is nothing to compute precision "
+        "or recall of CORRECT codes against. The verified rate says a code "
+        "exists in the CMS release, not that it is right for the note, and it "
+        "belongs in the metrics JSONB. See ROADMAP P2-4."),
+    "care_gap": (
+        "the rules are deterministic and unit-tested, which is a correctness "
+        "property, not a measured accuracy. There is no labeled set of which "
+        "gaps SHOULD have fired on a held-out encounter."),
+    "prior_auth": (
+        "no held-out encounter carries a labeled prior-auth determination, so "
+        "there is no reference to score a PriorAuthOutput against."),
+}
+
+
+class EvalPolicyError(RuntimeError):
+    """A write to eval_runs was refused on metric-policy grounds."""
+
+
+class UnscoreableAgentError(EvalPolicyError):
+    """An agent with no labeled set was handed a non-NULL accuracy family."""
+
+
+class UnknownAgentError(EvalPolicyError):
+    """An agent name in neither registry.
+
+    Distinct from UnscoreableAgentError on purpose. A typo must crash as a
+    typo, never resolve to "unscoreable" and read like a deliberate policy
+    decision about an agent nobody ever registered.
+    """
+
+
+def _require_registered(agent_name: str) -> None:
+    """Raise UnknownAgentError unless the name appears in one of the registries."""
+    if agent_name in SCOREABLE or agent_name in UNSCOREABLE:
+        return
+    raise UnknownAgentError(
+        f"{agent_name!r} is in neither SCOREABLE nor UNSCOREABLE. Register it "
+        f"in governance/evaluate.py before writing eval_runs rows for it. "
+        f"Known: {sorted(SCOREABLE) + sorted(UNSCOREABLE)}")
+
+
+def resolve_scoreable(agent_name: str) -> ScoreableAgent:
+    """Return the registry entry, or raise. Use before doing any scoring work.
+
+    Separate from the guard because a caller that intends to WRITE an accuracy
+    should fail before it spends anything, not after.
+    """
+    _require_registered(agent_name)
+    if agent_name in UNSCOREABLE:
+        raise UnscoreableAgentError(
+            f"{agent_name!r} cannot be scored for accuracy: "
+            f"{UNSCOREABLE[agent_name]}")
+    return SCOREABLE[agent_name]
+
+
+def assert_accuracy_family_allowed(agent_name: str,
+                                   metrics: Mapping[str, float | None]) -> None:
+    """The P3-1 invariant, enforced rather than merely documented.
+
+    > No agent outside the scoreable registry may ever be written a non-NULL
+    > accuracy, f1, precision or recall.
+
+    Before this existed the rule lived in three prose places nothing checked
+    (ROADMAP P2-4, a schema comment, a docstring), and coding_row_params'
+    four literal Nones were a convention, not a constraint. A verified rate
+    written into `accuracy` would be indistinguishable from a real accuracy on
+    a P4-1 chart, which is precisely the failure this project keeps guarding
+    against.
+
+    What it does NOT forbid: an unscoreable agent writing rows with the family
+    all NULL and its real numbers in the metrics JSONB. P2-4 established that
+    shape deliberately, and it stays legal.
+    """
+    _require_registered(agent_name)
+    if agent_name in SCOREABLE:
+        return
+
+    claimed = [name for name in ACCURACY_FAMILY
+               if metrics.get(name) is not None]
+    if claimed:
+        raise UnscoreableAgentError(
+            f"refusing to write {', '.join(claimed)} for {agent_name!r}: "
+            f"{UNSCOREABLE[agent_name]} Put the number in the metrics JSONB "
+            f"instead, where nothing will read it as an accuracy.")
+
+
+def record_eval_run(*, agent_name: str, model: str, model_effort: str | None,
+                    window_label: str, dataset_ref: str, n_examples: int,
+                    metrics: Mapping[str, float | None],
+                    provenance: Mapping[str, object],
+                    measured_at: datetime) -> int:
+    """The single guarded writer into eval_runs. Returns the row id.
+
+    measured_at becomes created_at. The column means THE TIME THE MEASUREMENT
+    WAS TAKEN, not the time the row was inserted: backfilling July's run today
+    under a now() default would stamp it with today's date and P3-3 would read
+    the trend backwards. See db/schema.sql.
+
+    The whole metrics mapping also goes into the JSONB alongside provenance,
+    so the blob is self-describing and so metrics with no column of their own
+    (hallucination_rate, highlights_recall) are not silently dropped.
+
+    accuracy is passed through with .get(), so a None survives as SQL NULL.
+    PriMock57 depends on that: placement is not scorable against an
+    unsectioned note, and replay() forces the value back to None precisely so
+    the 1.0 the arithmetic produces is never published.
+    """
+    assert_accuracy_family_allowed(agent_name, metrics)
+
+    blob = {**dict(metrics), "provenance": dict(provenance)}
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "INSERT INTO eval_runs (agent_name, model, model_effort, "
+            "window_label, dataset_ref, n_examples, accuracy, f1, precision, "
+            "recall, metrics, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "RETURNING id",
+            (agent_name, model, model_effort, window_label, dataset_ref,
+             n_examples, metrics.get("accuracy"), metrics.get("f1"),
+             metrics.get("precision"), metrics.get("recall"),
+             json.dumps(blob), measured_at),
+        ).fetchone()
+        return row[0]
 
 
 def score(y_true: list[int], y_pred: list[int]) -> dict:
@@ -126,26 +294,11 @@ def score_structuring(c: StructuringCounts) -> dict:
     }
 
 
-def record_structuring_run(*, agent_name: str, model: str, window_label: str,
-                           dataset_ref: str, n_examples: int,
-                           metrics: dict) -> int:
-    """Write one structuring eval to eval_runs. Returns the row id.
-
-    accuracy is nullable: the PriMock57 held-out notes are free-text GP
-    shorthand rather than SOAP sections, so placement cannot be honestly
-    scored there and the column is left NULL rather than filled with a
-    number that does not mean what the column says it means.
-    """
-    with get_conn() as conn:
-        row = conn.execute(
-            "INSERT INTO eval_runs (agent_name, model, window_label, "
-            "dataset_ref, n_examples, accuracy, f1, precision, recall) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (agent_name, model, window_label, dataset_ref, n_examples,
-             metrics.get("accuracy"), metrics["f1"],
-             metrics["precision"], metrics["recall"]),
-        ).fetchone()
-        return row[0]
+# record_structuring_run lived here until P3-1. It was a second, unguarded
+# path into eval_runs, and deleting it rather than leaving it deprecated is
+# the point: one writer means one place where the accuracy-family invariant is
+# enforced. The structuring path now goes through record_eval_run, via
+# governance/eval_runner.py::score_artifact.
 
 
 # ---------- P2-4: the coding routing benchmark ----------
@@ -171,6 +324,11 @@ def record_coding_run(*, agent_name: str, model: str, model_effort: str,
         agent_name=agent_name, model=model, model_effort=model_effort,
         window_label=window_label, dataset_ref=dataset_ref,
         n_examples=n_examples, metrics=metrics)
+    # The guard runs on the row actually about to be written, not on the
+    # metrics dict that produced it. coding_row_params hardcodes the four
+    # NULLs today; this is what notices if that ever stops being true.
+    assert_accuracy_family_allowed(
+        agent_name, dict(zip(ACCURACY_FAMILY, params[6:10])))
     with get_conn() as conn:
         row = conn.execute(
             "INSERT INTO eval_runs (agent_name, model, model_effort, "

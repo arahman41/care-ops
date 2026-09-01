@@ -19,7 +19,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from governance.evaluate import record_structuring_run          # noqa: E402
+from governance.eval_runner import score_artifact               # noqa: E402
 from governance.heldout import (                                # noqa: E402
     ACI_DATASET_REF,
     SplitDriftError,
@@ -192,14 +192,15 @@ def main() -> int:
         print("\n--no-db: not writing an eval_runs row.")
         return 0
 
-    row_id = record_structuring_run(
-        agent_name=AGENT_NAME,
-        model=result.structuring_model,
-        window_label=args.window_label,
-        dataset_ref=result.dataset_ref,
-        n_examples=len(result.examples),
-        metrics=result.metrics,
-    )
+    # Ingest through the artifact that was just written, rather than building
+    # a row from the in-memory result. Two things fall out of that. The live
+    # path and the P3-1 backfill become the same code, so there is one way a
+    # measurement becomes a row and one place the accuracy-family guard sits.
+    # And replay()'s recompute-and-cross-check now runs on every live run for
+    # free, which means a run whose stored metrics do not reproduce from its
+    # own verdicts fails here rather than being filed as a window.
+    row_id = score_artifact(agent_name=AGENT_NAME, artifact_path=artifact,
+                            window_label=args.window_label)
     print(f"eval_runs id = {row_id}")
     return 0
 

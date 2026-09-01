@@ -280,6 +280,114 @@ Not "per-agent decision accuracy". Accuracy is only claimable where a labeled re
 **Goal:** Continuous evaluation, drift detection, and an auto-generated transparency report.
 
 - **P3-1 Evaluation runner.** Done when `governance/evaluate.py` scores an agent against the held-out set for a named window and writes accuracy, F1, precision, and recall to `eval_runs`.
+
+  **DONE 2026-08-31.** Spec
+  `docs/superpowers/specs/2026-08-27-p3-1-evaluation-runner-design.md`, plan
+  `docs/superpowers/plans/2026-08-31-p3-1-evaluation-runner.md`. 368 passed /
+  1 xfailed (from 325), ruff clean.
+
+  | Gate clause | Evidence |
+  |---|---|
+  | scores an agent against the held-out set | `score_artifact` replays a committed artifact through `structuring_eval.replay`, which recomputes from the per-fact verdicts; ACI reproduces `f1 == 0.8685633622463043` exactly |
+  | for a named window | `--window`, carried onto the row; `GenerationConfig` defines what "window" is allowed to mean |
+  | writes accuracy, F1, precision, recall to `eval_runs` | rows 7 and 8 below, plus three `needs_db` round-trip tests |
+
+  **Read literally, the gate cannot be honored, and the refusal is the
+  deliverable.** Accuracy, F1, precision and recall require labels, and only
+  `note_structuring` has them. `coding` has no gold billing codes (P2-4),
+  `care_gap`'s rules are deterministic and unit-tested (a correctness
+  property, not an accuracy), and no held-out encounter carries a labeled
+  prior-auth determination. P3-1 scores the one agent that has a labeled set
+  and refuses the other three by name, with the reason carried into the
+  exception.
+
+  That refusal is now a guard rather than prose. The invariant, **no agent
+  outside the scoreable registry may ever be written a non-NULL accuracy, f1,
+  precision or recall**, previously existed only in this file, a schema
+  comment, and a docstring, and `coding_row_params`' four literal `None`s were
+  a convention that nothing enforced. Nothing prevented a later P3-5 endpoint
+  or P4-1 dashboard from writing a verified rate into `accuracy`, where it
+  would be indistinguishable from a real number on a chart.
+  `record_structuring_run` was **deleted** rather than deprecated, so there is
+  one guarded writer instead of two paths, and the live P1-4 script now
+  ingests through the same one.
+
+  The guard is mutation-checked, not merely present: with
+  `coding_row_params` monkeypatched to leak a rate into the `f1` slot,
+  `record_coding_run` raises `UnscoreableAgentError` before `get_conn`, so a
+  refused write never reaches the database. Counted before and after in
+  `test_a_refused_write_inserts_nothing_at_all`, because "raises" alone would
+  still pass if a row had already landed.
+
+  **The spec's backfill premise was wrong, and checking it produced a
+  cross-check nobody had ever run.** P1-4's July measurements were already in
+  `eval_runs` as rows 1 and 2, written live on 2026-07-14, not missing as the
+  spec assumed. All eight stored values reproduce from the committed
+  artifacts, and PriMock57's `accuracy` was already correctly NULL. The
+  database rows and the committed artifacts are two independent halves of
+  P1-4's evidence and they agree.
+
+  They carried no provenance, though: `model_effort` and `metrics` were both
+  NULL, so nothing recorded the model, effort, prompt hash or output cap. P3-3
+  compares windows by `GenerationConfig`, and a reference window with no
+  config is comparable to nothing, so backfilling alongside them would have
+  double-counted one measurement. Both were re-filed through the guarded
+  writer by `scripts/refile_eval_run.py`, which refuses to delete a row until
+  the artifact has reproduced its stored metrics and its timestamp lands
+  within five minutes of the row's, snapshots the original to
+  `governance/eval_artifacts/refiled/`, and inserts and verifies the
+  replacement **before** removing the original, so an interrupted run leaves a
+  visible duplicate rather than a missing measurement.
+
+  | row | dataset | n | accuracy | f1 | created_at |
+  |---|---|---|---|---|---|
+  | 7 | aci-bench-heldout-v1 | 120 | 0.8796581 | 0.86856335 | 2026-07-14T03:24:03Z |
+  | 8 | primock57-heldout-v1 | 7 | NULL | 0.8990241 | 2026-07-14T09:36:50Z |
+
+  `created_at` is **redefined as the time the measurement was taken**, not the
+  time the row was inserted, and is written explicitly from the artifact. Under
+  the `now()` default a July measurement filed in August would sit at the
+  newest end of the trend and P3-3 would read any drift backwards. The
+  definition is in `db/schema.sql` so no later reader misinterprets the column.
+  The re-filed rows kept the artifact's stamp rather than the original row's,
+  which differed by the 213 ms and 58 ms artifact-to-insert lag; the insert
+  time is not a fact about the model.
+
+  **PriMock57's NULL accuracy survives the whole trip.** `replay()` forces it
+  back to `None` because placement is not scorable against an unsectioned GP
+  note, where the arithmetic yields a meaningless 1.0. Row 8 stores SQL NULL.
+  Had `record_eval_run` written the 1.0, the exact failure `replay()` exists to
+  prevent would have occurred one layer further down, in the table a dashboard
+  reads.
+
+  **The `max_tokens` gap is closed forward and left open backward.** The
+  artifact never recorded `max_tokens`, even though `generate_soap` folds it
+  into its cache key precisely because a 1200-token cap once truncated long
+  encounters. Whether it was 8000 in July is not recoverable, so both July rows
+  record `max_tokens: null`, meaning "not recorded by the harness of the day",
+  never `8000`. `_redacted()` now writes it, so every window from here on is
+  fully provenanced. `differing_fields` reports `max_tokens` as **differing**
+  when exactly one side is null, so P3-3 sees the ambiguity in data rather than
+  assuming equality.
+
+  **One deviation from the spec, recorded rather than applied quietly.** Spec
+  §7 assigns the split check to `heldout.verify_split()`, which rebuilds the
+  split from `data/`. That would make the ingest path unrunnable in CI, where
+  `data/` is gitignored, and would contradict spec §8's requirement that the
+  replay tests need neither `needs_data` nor `needs_db`. Ingesting a committed
+  artifact never touches the datasets. `score_artifact` therefore raises the
+  same `SplitDriftError` on a data-free comparison of the artifact's
+  `split_digest` against the committed lock, and `verify_split()` stays where
+  it already guards generation, in `scripts/run_structuring_eval.py`, before a
+  single paid call.
+
+  **Carried forward.** One window exists, not two; P3-2 produces window 2 and
+  costs a live paid run. The agent registry is hand-maintained, so a genuinely
+  new agent raises `UnknownAgentError` at write time rather than at startup.
+  The guard protects `eval_runs` only: a consumer that computes a number and
+  renders it without writing a row is outside its reach. PriMock57's window is
+  n=7, too small to quote as a headline beside ACI-Bench's n=120; P3-4 decides
+  what may be said about it.
 - **P3-2 Two windows of data.** Done when at least one agent has accuracy stored for at least two distinct versions or time windows, so a trend exists to plot.
 - **P3-3 Drift detection.** Done when `governance/drift.py` compares a reference window against a current window and, given an injected accuracy or confidence drop in a controlled test, flags it. The test in `tests/test_drift.py` passes.
 - **P3-4 Transparency report generator.** Done when `governance/transparency.py` produces a report from real `model_inventory` data using ONC HTI-1 style fields, mapped to real disclosure language where possible.

@@ -372,6 +372,15 @@ def _redacted(result: RunResult) -> dict:
         "split_digest": result.split_digest,
         "structuring_model": result.structuring_model,
         "structuring_effort": result.structuring_effort,
+        # The fourth generation field, added in P3-1. generate_soap already
+        # folds max_tokens into its cache key because a cap change silently
+        # rewrites long notes (the original 1200-token cap truncated them),
+        # but the artifact never recorded it, so no run before 2026-08-31 can
+        # say what its cap was. Recording it makes every window from here on
+        # fully provenanced; the July windows stay null, because inventing a
+        # value for a run nobody can re-inspect is worse than admitting the
+        # gap. See the P3-1 spec, section 4.
+        "structuring_max_tokens": MAX_TOKENS,
         "judge_model": ROUTING["eval_judge"][0],
         "prompt_versions": {
             "structuring": hash_prompt(SYSTEM_PROMPT),
