@@ -30,11 +30,14 @@ from governance.heldout import (                                # noqa: E402
 from governance.llm_cache import Cache                          # noqa: E402
 from governance.structuring_eval import (                       # noqa: E402
     AGENT_NAME,
+    ARTIFACT_DIR,
     CACHE_DIR,
+    SMOKE_ARTIFACT_DIR,
     evaluate_examples,
     evaluate_primock,
     locked_digest,
     replay,
+    window_cache,
     write_artifacts,
 )
 
@@ -107,6 +110,60 @@ disclosure
 """
 
 
+def _cost_report(result, full_n: int | None = None) -> str:
+    """What the run actually cost, and what the full set would cost (P3-2).
+
+    The extrapolation is the point of a pilot. P2-4 learned that effort-driven
+    reasoning tokens are billed as output and are invisible in the cached
+    response text, so per-note cost cannot be estimated from the prompt; it has
+    to be measured on real notes and scaled.
+    """
+    window = (result.cache_stats or {}).get("window", {})
+    hits, misses = window.get("hits", {}), window.get("misses", {})
+    n = len(result.examples)
+
+    tasks = sorted(set(hits) | set(misses))
+    cache_lines = "\n".join(
+        f"  {task:12} {misses.get(task, 0):5} generated  {hits.get(task, 0):5} from cache"
+        for task in tasks) or "  (no cached tasks recorded)"
+
+    usage_lines = "\n".join(
+        f"  {model:28} {u['calls']:5} calls  {u['input_tokens']:9,} in  "
+        f"{u['output_tokens']:9,} out"
+        for model, u in sorted(result.usage.items())) or "  (no calls made)"
+
+    if result.cost_usd is None:
+        cost = ("  cost            not priceable: a model in this run is absent "
+                "from governance/pricing.json,\n                  and a partial "
+                "total would understate it")
+    else:
+        cost = f"  cost            ${result.cost_usd:.2f} for {n} encounters"
+        if n:
+            cost += f"  (${result.cost_usd / n:.4f} each)"
+
+    extrapolation = ""
+    if result.cost_usd is not None and full_n and n and full_n != n:
+        projected = result.cost_usd / n * full_n
+        extrapolation = (
+            f"\n\n  PILOT EXTRAPOLATION\n"
+            f"  {n} of {full_n} encounters measured. The full set projects to "
+            f"about ${projected:.2f}.\n"
+            f"  Sampling noise is real at n={n}: treat this as an order of "
+            f"magnitude, not a quote.")
+
+    return f"""
+======================= RUN COST (P3-2) =======================
+cache namespace activity  (generated = a real API call was made)
+{cache_lines}
+
+tokens
+{usage_lines}
+
+{cost}{extrapolation}
+===============================================================
+"""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", choices=["aci", "primock"], default="aci")
@@ -118,6 +175,14 @@ def main() -> int:
     parser.add_argument("--no-db", action="store_true",
                         help="skip the eval_runs write")
     parser.add_argument("--window-label", default="v1")
+    parser.add_argument(
+        "--cache-namespace", default=None,
+        help="cache namespace for this run, defaulting to the window label. "
+             "A NEW window must use a namespace of its own: the cache key "
+             "does not cover the window, so reusing another window's "
+             "namespace replays its notes and reproduces its metrics exactly. "
+             "Pass 'legacy' to read the pre-P3-2 flat cache, which is where "
+             "window 1 lives.")
     parser.add_argument("--replay", type=Path, default=None,
                         help="recompute the metrics from a committed artifact")
     args = parser.parse_args()
@@ -148,6 +213,7 @@ def main() -> int:
 
     is_primock = args.dataset == "primock"
     examples = load_primock_heldout() if is_primock else load_aci_heldout()
+    full_n = len(examples)
 
     if args.limit:
         examples = examples[:args.limit]
@@ -167,11 +233,19 @@ def main() -> int:
         done[0] += 1
         print(f"\r  {done[0]}/{len(examples)}", end="", flush=True)
 
-    cache = Cache(CACHE_DIR)
+    namespace = args.cache_namespace or args.window_label
+    # 'legacy' is the pre-P3-2 flat cache, which is where window 1's outputs
+    # live. Every other namespace gets its own directory, so a new window
+    # cannot be served from an older one's notes.
+    cache = Cache(CACHE_DIR) if namespace == "legacy" else window_cache(namespace)
+    print(f"cache namespace  {namespace}  ({cache.root})")
     if is_primock:
         result = evaluate_primock(
             examples, cache=cache, model_size=args.whisper,
-            workers=args.workers, on_done=progress)
+            workers=args.workers, on_done=progress,
+            # Whisper is local, deterministic, and not the model under test,
+            # so transcripts are shared across windows rather than re-run.
+            transcribe_cache=Cache(CACHE_DIR))
     else:
         result = evaluate_examples(
             examples, cache=cache, workers=args.workers,
@@ -180,8 +254,12 @@ def main() -> int:
     print()
 
     print(_report(result))
+    print(_cost_report(result, full_n=full_n))
 
-    artifact = write_artifacts(result)
+    # A partial run is not a window, so its artifact does not go where windows
+    # live. See SMOKE_ARTIFACT_DIR.
+    artifact = write_artifacts(
+        result, out_dir=SMOKE_ARTIFACT_DIR if args.limit else ARTIFACT_DIR)
     print(f"artifact  {artifact.relative_to(REPO_ROOT)}")
 
     if args.limit:

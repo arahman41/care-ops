@@ -71,7 +71,7 @@ Legend: S5 = Sonnet 5, O48 = Opus 4.8.
 | Task | Model | Effort | Why |
 |---|---|---|---|
 | P3-1 Evaluation runner | O48 | max | Metric computation |
-| P3-2 Two windows of data | S5 | medium | Data plumbing |
+| P3-2 Two windows of data | O48 | max | Produces the second headline number, and the harness will fabricate it if unguarded. See below |
 | P3-3 Drift detection | O48 | xhigh | Sensitivity logic and Evidently API correctness |
 | P3-4 Transparency report generator | S5 | high | Verify HTI-1 field mapping by hand |
 | P3-5 Governance API | S5 | medium | Read endpoints |
@@ -93,6 +93,17 @@ Legend: S5 = Sonnet 5, O48 = Opus 4.8.
 | P5-3 Embedding Care Gap Agent | O48 | xhigh | Retrieval design and comparison |
 
 Quick rule if you forget: if the task writes or protects a number that could end up on your resume, use `/model opus` and `/effort max`. Otherwise Sonnet 5 at medium or high is right, and Opus 4.8 xhigh is for the genuinely hard design and orchestration work.
+
+**P3-2 was rated S5/medium, "data plumbing", until 2026-08-31.** That was
+written before P3-1 defined what a window is, and it was wrong twice over.
+P3-2 produces the second measured number on the held-out set, and P3-3's
+entire drift metric is the gap between it and window 1, so the quick rule
+above already pointed at max. Worse, the task turned out to contain a live
+trap: `cache_key` does not cover the window label, so all 120 held-out
+structuring calls were already cached and a second window run against them
+would have replayed July's notes and reproduced its metrics bit-identically,
+passing `replay()`, the P3-1 guard, and CI. Finding that is not plumbing
+work. The row is corrected rather than left to mislead the next reader.
 
 ---
 

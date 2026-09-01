@@ -147,6 +147,27 @@ def assert_accuracy_family_allowed(agent_name: str,
             f"instead, where nothing will read it as an accuracy.")
 
 
+def windows_with_counts(agent_name: str, dataset_ref: str,
+                        counts: Mapping[str, int]) -> list[str]:
+    """Window labels for this agent and dataset whose stored counts match.
+
+    P3-2's guard 2. The counts live in the metrics JSONB under
+    provenance.counts, written by the P3-1 ingest path. Compared as a whole
+    mapping rather than field by field, because a partial match is not
+    evidence of anything.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT window_label, metrics FROM eval_runs "
+            "WHERE agent_name = %s AND dataset_ref = %s AND metrics IS NOT NULL",
+            (agent_name, dataset_ref),
+        ).fetchall()
+
+    wanted = dict(counts)
+    return [label for label, metrics in rows
+            if (metrics or {}).get("provenance", {}).get("counts") == wanted]
+
+
 def record_eval_run(*, agent_name: str, model: str, model_effort: str | None,
                     window_label: str, dataset_ref: str, n_examples: int,
                     metrics: Mapping[str, float | None],

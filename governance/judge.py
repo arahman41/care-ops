@@ -179,7 +179,7 @@ def judge_presence(soap: SoapNote, facts: list[Fact],
     model, _ = ROUTING["eval_judge"]
     key = cache_key(_PRESENCE_TASK, model, PRESENCE_PROMPT_VERSION, payload)
 
-    raw = cache.get(key)
+    raw = cache.get(key, _PRESENCE_TASK)
     if raw is None:
         raw = call("eval_judge", system=_PRESENCE_SYSTEM, user=payload,
                    max_tokens=4000, temperature=0)
@@ -227,7 +227,7 @@ def judge_support(transcript: str, gen_facts: list[str],
     model, _ = ROUTING["eval_judge"]
     key = cache_key(_SUPPORT_TASK, model, SUPPORT_PROMPT_VERSION, payload)
 
-    raw = cache.get(key)
+    raw = cache.get(key, _SUPPORT_TASK)
     if raw is None:
         raw = call("eval_judge", system=_SUPPORT_SYSTEM, user=payload,
                    max_tokens=4000, temperature=0)
