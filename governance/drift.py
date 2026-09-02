@@ -32,6 +32,9 @@ from enum import Enum
 from typing import Callable, Mapping
 
 import numpy as np
+import pandas as pd
+from evidently.metric_preset import DataDriftPreset
+from evidently.report import Report
 
 from governance.bootstrap import BcaResult, paired_bca
 from governance.eval_runner import config_from_artifact
@@ -265,3 +268,102 @@ def compare_structuring_windows(
         delta=boot.d, ci=boot.ci, mde=(hi - lo) / 2.0, direction=direction,
         n_paired=len(ids), comparability=comparability,
         unmeasured_variance=unmeasured, caveats=caveats, bootstrap=boot)
+
+
+# ---------- the confidence stream ----------
+
+# Columns that pin a confidence window's configuration, mirroring what
+# GenerationConfig pins for a structuring window. agent_decisions stores all
+# three per row (db/schema.sql), so a range that mixes them is comparing two
+# different systems and saying it found drift.
+_CONFIG_COLUMNS = ("agent_name", "model", "model_effort")
+
+_SELF_REPORTED = (
+    "confidence is self-reported by the model and is not scored against "
+    "labels, so a move here is not evidence of an accuracy change. Only "
+    "note_structuring has a labeled held-out set")
+
+
+def _dataset_drift(payload: Mapping) -> bool:
+    """Read evidently's dataset-level flag, or raise.
+
+    Pinned to the 0.5.1 shape, where DatasetDriftMetric nests its output under
+    "result". The pre-P3-3 stub walked "value", found nothing, and returned
+    False, which turns an upgrade into permanent silence from the alerting
+    path. Raising is the only safe failure for a detector: a wrong "no drift"
+    is believed, a crash is fixed.
+    """
+    for metric in payload.get("metrics", []):
+        result = metric.get("result")
+        if isinstance(result, Mapping) and "dataset_drift" in result:
+            return bool(result["dataset_drift"])
+    raise ValueError(
+        "unrecognized evidently payload: no metric carries "
+        "result.dataset_drift. governance/requirements.txt pins "
+        "evidently==0.5.1; if that pin moved, re-read the report shape rather "
+        "than defaulting to 'no drift'")
+
+
+def _mixed_configuration(reference: pd.DataFrame,
+                         current: pd.DataFrame) -> list[str]:
+    """Config columns that are not single-valued within each range."""
+    out: list[str] = []
+    for column in _CONFIG_COLUMNS:
+        for name, frame in (("reference", reference), ("current", current)):
+            if column not in frame.columns:
+                continue
+            values = set(frame[column].dropna().unique())
+            if len(values) > 1:
+                out.append(
+                    f"the {name} range mixes {len(values)} values of "
+                    f"{column} ({', '.join(sorted(map(str, values)))}), so it "
+                    f"is not one window: a window holds the configuration "
+                    f"fixed")
+    return out
+
+
+def compare_confidence(reference: pd.DataFrame, current: pd.DataFrame, *,
+                       column: str = "confidence") -> DriftResult:
+    """Drift in self-reported confidence between two time ranges.
+
+    Unpaired on purpose: two ranges of agent_decisions cover different
+    encounters, so there is nothing to pair and evidently's two-sample test is
+    the right instrument. n_paired is 0 for that reason, not because the data
+    is missing.
+
+    This is the only cross-agent signal the system has, and the weakest one.
+    Every result says so.
+    """
+    for name, frame in (("reference", reference), ("current", current)):
+        if column not in frame.columns:
+            raise ValueError(f"the {name} frame has no {column!r} column")
+
+    reasons = _mixed_configuration(reference, current)
+    if reasons:
+        return _not_comparable(column, reasons, 0)
+
+    report = Report(metrics=[DataDriftPreset()])
+    report.run(reference_data=reference[[column]], current_data=current[[column]])
+    drifted = _dataset_drift(report.as_dict())
+
+    ref_mean = float(reference[column].mean())
+    cur_mean = float(current[column].mean())
+    delta = cur_mean - ref_mean
+
+    verdict = DriftVerdict.DRIFT if drifted else DriftVerdict.NO_DRIFT
+    direction = None
+    if drifted:
+        direction = "improvement" if delta > 0 else "degradation"
+
+    caveats = (
+        _SELF_REPORTED,
+        f"unpaired comparison of {len(reference)} against {len(current)} "
+        f"decisions covering different encounters, so part of any move is "
+        f"case mix rather than the model",
+    )
+
+    return DriftResult(
+        verdict=verdict, metric=column, reference=ref_mean, current=cur_mean,
+        delta=delta, ci=None, mde=None, direction=direction, n_paired=0,
+        comparability=(), unmeasured_variance=(), caveats=caveats,
+        bootstrap=None)

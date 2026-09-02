@@ -12,12 +12,15 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 import pytest
 
 from governance.drift import (
     DriftResult,
     DriftVerdict,
+    _dataset_drift,
+    compare_confidence,
     compare_structuring_windows,
 )
 
@@ -206,3 +209,63 @@ def test_a_differing_config_downgrades_even_a_null_result():
     assert result.delta == 0.0
     assert result.verdict is DriftVerdict.NOT_ATTRIBUTABLE
     assert result.comparability == ("max_tokens",)
+
+
+# ---------- the confidence stream: unpaired, unlabeled, all four agents ----------
+
+
+def test_confidence_collapse_is_flagged():
+    rng = np.random.default_rng(0)
+    reference = pd.DataFrame({"confidence": rng.normal(0.9, 0.02, 500)})
+    current = pd.DataFrame({"confidence": rng.normal(0.55, 0.05, 500)})
+
+    result = compare_confidence(reference, current)
+    assert result.verdict is DriftVerdict.DRIFT
+    assert result.direction == "degradation"
+    assert any("self-reported" in c for c in result.caveats), (
+        "a confidence move is never evidence of an accuracy move")
+
+
+def test_stable_confidence_is_not_flagged():
+    rng = np.random.default_rng(1)
+    reference = pd.DataFrame({"confidence": rng.normal(0.9, 0.02, 500)})
+    current = pd.DataFrame({"confidence": rng.normal(0.9, 0.02, 500)})
+
+    assert compare_confidence(reference, current).verdict is DriftVerdict.NO_DRIFT
+
+
+def test_mixed_models_in_a_confidence_window_are_not_comparable():
+    """A window holds the generation configuration fixed, here too."""
+    reference = pd.DataFrame({"confidence": [0.90, 0.88],
+                              "model": ["claude-sonnet-5"] * 2})
+    current = pd.DataFrame({"confidence": [0.50, 0.52],
+                            "model": ["claude-sonnet-5", "claude-opus-4-8"]})
+
+    result = compare_confidence(reference, current)
+    assert result.verdict is DriftVerdict.NOT_COMPARABLE
+    assert result.delta is None
+    assert "model" in " ".join(result.caveats)
+
+
+def test_an_unrecognized_evidently_payload_raises():
+    """Fails loud, not closed.
+
+    The pre-P3-3 stub walked metric["value"], found nothing under evidently
+    0.5.1 (which nests under "result"), and returned False. A detector that
+    reports "no drift" when it cannot read its own input is worse than no
+    detector, because it is trusted. An evidently upgrade must break CI here
+    rather than quietly silencing every alert.
+    """
+    with pytest.raises(ValueError, match="unrecognized"):
+        _dataset_drift({"metrics": [{"metric": "DatasetDriftMetric",
+                                     "value": {"dataset_drift": True}}]})
+
+
+def test_the_evidently_result_key_is_pinned():
+    """0.5.1 nests the flag under "result". This is the shape we depend on."""
+    rng = np.random.default_rng(2)
+    reference = pd.DataFrame({"confidence": rng.normal(0.9, 0.02, 200)})
+    current = pd.DataFrame({"confidence": rng.normal(0.4, 0.05, 200)})
+
+    result = compare_confidence(reference, current)
+    assert result.verdict is DriftVerdict.DRIFT
