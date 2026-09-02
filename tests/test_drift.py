@@ -7,7 +7,6 @@ to attribute their delta to the model, for three separately named reasons.
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 
 import pytest

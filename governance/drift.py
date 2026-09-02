@@ -31,11 +31,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping
 
-import numpy as np
 
-from governance.bootstrap import BcaResult, paired_bca
-from governance.eval_runner import config_from_artifact
-from governance.evaluate import StructuringCounts, score_structuring
+from governance.bootstrap import BcaResult
 from governance.structuring_eval import per_encounter_counts
 
 # Fixed so a drift verdict is reproducible from the artifacts alone. Changing
