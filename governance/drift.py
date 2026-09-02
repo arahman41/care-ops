@@ -34,6 +34,7 @@ from typing import Callable, Mapping
 import numpy as np
 
 from governance.bootstrap import BcaResult, paired_bca
+from governance.eval_runner import config_from_artifact
 from governance.evaluate import StructuringCounts, score_structuring
 from governance.structuring_eval import per_encounter_counts
 
@@ -42,6 +43,12 @@ from governance.structuring_eval import per_encounter_counts
 # somebody tunes until the answer looks better.
 DRIFT_SEED = 20260902
 DRIFT_REPLICATES = 10000
+
+# Variance the encounter bootstrap does NOT measure, and so cannot put in the
+# interval. Both are zero only when the current window is a deterministic
+# transformation of the reference one, which is true of a controlled test and
+# of nothing else.
+UNMEASURED_COMPONENTS = ("generation_sampling", "instrument")
 
 # The order score_structuring's counts are summed in. Kept next to _matrix,
 # which depends on it positionally.
@@ -79,6 +86,49 @@ class DriftResult:
     unmeasured_variance: tuple[str, ...]
     caveats: tuple[str, ...]
     bootstrap: BcaResult | None
+
+
+def _caveats(reference: Mapping, current: Mapping,
+             comparability: tuple[str, ...], unmeasured: tuple[str, ...],
+             *, mde: float, metric: str, n_paired: int) -> tuple[str, ...]:
+    """What a reader has to know before quoting the number above.
+
+    Every caveat names the evidence for itself. "The instrument moved" is not
+    believable without the two fact counts next to it, and a reader who cannot
+    check a caveat will eventually ignore it.
+    """
+    out: list[str] = []
+
+    if comparability:
+        out.append(
+            f"generation configuration differs on "
+            f"{', '.join(comparability)}, so the delta cannot be attributed "
+            f"to the model. A null max_tokens means 'not recorded by the "
+            f"harness of the day', never 8000")
+
+    if "generation_sampling" in unmeasured:
+        out.append(
+            "the generation-sampling baseline is unmeasured: effort-driven "
+            "calls sample, so two runs of an identical configuration differ "
+            "with no vendor change, and no same-day repeat run exists to say "
+            "by how much. That variance is NOT in the interval above")
+
+    if "instrument" in unmeasured:
+        ref_facts = (reference.get("counts") or {}).get("ref_facts")
+        cur_facts = (current.get("counts") or {}).get("ref_facts")
+        detail = (f" ({cur_facts} reference facts against {ref_facts}, from "
+                  f"reference notes that did not change)"
+                  if ref_facts and cur_facts and ref_facts != cur_facts else "")
+        out.append(
+            f"the measuring instrument moved too{detail}: the decomposer and "
+            f"judge are model calls, so part of any delta is instrument "
+            f"variation rather than a change in what is being measured")
+
+    out.append(
+        f"n={n_paired} paired encounters: this comparison could detect a "
+        f"{metric} move of about {mde:.4f}. A smaller move is not ruled out")
+
+    return tuple(out)
 
 
 def _matrix(per: Mapping[str, StructuringCounts],
@@ -195,8 +245,23 @@ def compare_structuring_windows(
         verdict = DriftVerdict.NO_DRIFT
         direction = None
 
+    comparability = config_from_artifact(reference).differing_fields(
+        config_from_artifact(current))
+    unmeasured = () if controlled_pair else UNMEASURED_COMPONENTS
+
+    caveats = _caveats(reference, current, comparability, unmeasured,
+                       mde=(hi - lo) / 2.0, metric=metric,
+                       n_paired=len(ids))
+
+    # Provenance outranks the statistic, in BOTH directions. A delta that
+    # cannot be assigned to the model is not drift, and a null result between
+    # two windows that were not generated the same way is not evidence of
+    # stability either.
+    if comparability or unmeasured:
+        verdict = DriftVerdict.NOT_ATTRIBUTABLE
+
     return DriftResult(
         verdict=verdict, metric=metric, reference=ref_value, current=cur_value,
         delta=boot.d, ci=boot.ci, mde=(hi - lo) / 2.0, direction=direction,
-        n_paired=len(ids), comparability=(), unmeasured_variance=(),
-        caveats=(), bootstrap=boot)
+        n_paired=len(ids), comparability=comparability,
+        unmeasured_variance=unmeasured, caveats=caveats, bootstrap=boot)

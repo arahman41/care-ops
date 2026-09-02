@@ -159,3 +159,50 @@ def test_an_injected_improvement_is_flagged_as_drift_not_hidden():
     assert result.verdict is DriftVerdict.DRIFT
     assert result.direction == "improvement"
     assert result.delta > 0
+
+
+@needs_windows
+def test_the_two_real_windows_are_not_attributable():
+    """Windows 7 and 25, the only real pair. Three reasons, all named.
+
+    This is the module working, not failing. P3-2 recorded these three reasons
+    in the roadmap; asserting them here is what stops a later reader "fixing"
+    the refusal because the delta looked clean.
+    """
+    reference = json.loads(COMMITTED_JUL.read_text(encoding="utf-8"))
+    current = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+
+    result = compare_structuring_windows(reference, current, replicates=2000)
+
+    assert result.verdict is DriftVerdict.NOT_ATTRIBUTABLE
+    assert result.comparability == ("max_tokens",)
+    assert set(result.unmeasured_variance) == {"generation_sampling", "instrument"}
+
+    # The statistic is still reported. Refusing to attribute it is not the
+    # same as refusing to measure it.
+    assert result.delta is not None
+    assert result.ci is not None
+    assert result.mde > 0
+    assert result.n_paired == 120
+
+    joined = " ".join(result.caveats)
+    assert "max_tokens" in joined
+    assert "6550" in joined and "6553" in joined, "name the instrument's move"
+
+
+@needs_windows
+def test_a_differing_config_downgrades_even_a_null_result():
+    """Provenance outranks the statistic in BOTH directions.
+
+    Comparing two windows that were not generated the same way and finding no
+    difference is not evidence of stability either, so it may not be reported
+    as NO_DRIFT.
+    """
+    reference = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+    current = copy.deepcopy(reference)
+    current["structuring_max_tokens"] = 1200
+
+    result = compare_structuring_windows(reference, current, replicates=500)
+    assert result.delta == 0.0
+    assert result.verdict is DriftVerdict.NOT_ATTRIBUTABLE
+    assert result.comparability == ("max_tokens",)
