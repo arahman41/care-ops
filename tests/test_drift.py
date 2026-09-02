@@ -269,3 +269,52 @@ def test_the_evidently_result_key_is_pinned():
 
     result = compare_confidence(reference, current)
     assert result.verdict is DriftVerdict.DRIFT
+
+
+# ---------- the phase metric: sensitivity on a controlled injected drop ----------
+
+# Measured 2026-09-02 at 2000 replicates, seed 11, against window 2. Every
+# fraction from 0.0005 up is flagged; a single flipped fact is not. These are
+# CONTROLLED-PAIR numbers, where the two windows differ ONLY by the injection,
+# so they are an upper bound on sensitivity and not what two independently
+# generated windows would give. The real pair's MDE is 0.0053, about 19 times
+# larger, because two real generations differ everywhere at once.
+SENSITIVITY = (0.0005, 0.001, 0.005, 0.02, 0.10)
+
+
+@needs_windows
+@pytest.mark.parametrize("fraction", SENSITIVITY)
+def test_sensitivity_sweep(fraction, record_property):
+    """Drift detection sensitivity on a controlled injected drop.
+
+    A property of THIS detector at n=120 paired encounters, not a claim about
+    the system's stability.
+    """
+    payload = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+    result = compare_structuring_windows(
+        payload, degrade(payload, fraction=fraction, seed=11),
+        controlled_pair=True, replicates=2000)
+
+    record_property("fraction", fraction)
+    record_property("delta_f1", result.delta)
+    record_property("verdict", result.verdict.value)
+
+    assert result.verdict is DriftVerdict.DRIFT
+    assert result.direction == "degradation"
+
+
+@needs_windows
+def test_the_sensitivity_floor_is_recorded_not_hidden():
+    """One flipped fact out of 5,875 is NOT detected. Say so.
+
+    A detector whose limit is undocumented gets read as having none, and the
+    first thing anyone will do with this module is ask how small a drop it can
+    see.
+    """
+    payload = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+    result = compare_structuring_windows(
+        payload, degrade(payload, fraction=0.0002, seed=11),
+        controlled_pair=True, replicates=2000)
+
+    assert result.verdict is DriftVerdict.NO_DRIFT
+    assert result.delta < 0, "the injection did happen, it is just too small"
