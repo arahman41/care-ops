@@ -581,6 +581,77 @@ Not "per-agent decision accuracy". Accuracy is only claimable where a labeled re
   `drift_alerts` table was added: P3-5 computes on demand, and an unused table
   is a schema commitment made before there is a reader.
 - **P3-4 Transparency report generator.** Done when `governance/transparency.py` produces a report from real `model_inventory` data using ONC HTI-1 style fields, mapped to real disclosure language where possible.
+
+  **DONE 2026-09-02.** Spec
+  `docs/superpowers/specs/2026-09-02-p3-4-transparency-report-design.md`, plan
+  `docs/superpowers/plans/2026-09-02-p3-4-transparency-report.md`. 418 passed
+  (from 411), ruff clean. `model_inventory` had never had a row written to it
+  before this task.
+
+  **The field mapping is checked against the real rule, not invented.** The
+  Federal Register page for HTI-1 (89 FR 1192) blocks automated fetching.
+  AHIMA's summary of the final rule, fetched directly, gives the nine named
+  categories the rule groups its 31 required source attributes into; this
+  report's fields are keyed by those nine names verbatim, quoted in
+  `governance/transparency.py::HTI1_CATEGORIES`. "HTI-1 **style**," per the
+  gate's own wording, not a certification claim.
+
+  **Performance and validation are never stored text.** Three of the nine
+  categories (details/output, quantitative performance, and the
+  update/revalidation schedule) are answered by a live join against
+  `eval_runs` and `governance/drift.py` at report-build time, not by columns
+  in `model_inventory`. A stored number goes stale silently the moment a new
+  window is filed, exactly the failure that hit `governance/pricing.json` and
+  the P1-4 cache key. The other six categories are seeded from language this
+  project had already committed and vetted elsewhere:
+  `governance.evaluate.UNSCOREABLE`'s reasons for the three unscoreable
+  agents, the four `CareGapSource` citations from P2-2's rule module, and
+  P2-4's routing rationale for coding.
+
+  **A real query bug in the join was caught before it shipped, by checking
+  against the real rows rather than trusting the spec's sketch.** The spec's
+  "latest 2 `eval_runs` rows by `measured_at`" would have misfired twice:
+  coding's two rows are P2-4's two ARMS filed seconds apart, not two time
+  windows, and `note_structuring`'s literal latest two rows span two
+  different datasets (ACI-Bench and PriMock57). The fix, used throughout:
+  filter `eval_runs` to `(agent_name, model)` using the `model_inventory`
+  row's own model before anything else. That alone isolates coding to its
+  routed arm (`claude-opus-4-8`), and combined with fixing the newest row's
+  dataset before taking the next-most-recent, gives `note_structuring`
+  exactly windows 7 and 25, the pair P3-3 already characterized.
+
+  **`note_structuring`'s report reads `NOT_ATTRIBUTABLE`, and that is correct,
+  not a defect.** Its "ongoing maintenance" category reproduces P3-3's exact
+  verdict on windows 7 and 25:
+
+  > NOT_ATTRIBUTABLE: 'v1' (2026-07-14) vs '2026-08-w5' (2026-08-31), delta
+  > +0.005208: generation configuration differs on max_tokens, so the delta
+  > cannot be attributed to the model... the generation-sampling baseline is
+  > unmeasured... the measuring instrument moved too (6553 reference facts
+  > against 6550, from reference notes that did not change)... n=120 paired
+  > encounters: this comparison could detect a f1 move of about 0.0053.
+
+  A report that hid this and showed a clean pass would be worse than no
+  report.
+
+  **`coding`'s external validation is stated as a non-result, on purpose.**
+  "Benchmarked against claude-sonnet-5 at xhigh... paired delta 0.70 points,
+  95% BCa CI [-0.73, 2.22]. The interval straddles zero, so this is NOT a
+  demonstrated quality win... the routing decision was cost, not accuracy."
+  This is the P2-4 finding restated, not softened.
+
+  **One readability bug caught by reading the actual output, not by a
+  test.** `drift.py`'s caveat strings carry no closing punctuation of their
+  own (built to be printed one per line by `scripts/run_drift_check.py`).
+  Joined with a bare space in the report they ran together as one
+  unpunctuated sentence. No test caught it, since the existing assertions
+  only checked substring presence; fixed by reading the generated text before
+  writing it into this entry.
+
+  **Carried forward.** No rendering: `build_report()` returns structured
+  data, P4-1 renders it. No new endpoint: P3-5 exposes this over HTTP. No
+  `transparency`/`eval_judge` rows: infrastructure, not a decision support
+  intervention a clinician sees.
 - **P3-5 Governance API.** Expose read endpoints for inventory, accuracy trend, and the transparency report so the dashboard has real data. Done when each endpoint returns registry-backed JSON, no mocked values.
 
 **Exit gate:** an injected accuracy drop is flagged by drift detection, and a transparency report renders from real data.
