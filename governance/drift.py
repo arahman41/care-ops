@@ -29,10 +29,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping
+from typing import Callable, Mapping
 
+import numpy as np
 
-from governance.bootstrap import BcaResult
+from governance.bootstrap import BcaResult, paired_bca
+from governance.evaluate import StructuringCounts, score_structuring
 from governance.structuring_eval import per_encounter_counts
 
 # Fixed so a drift verdict is reproducible from the artifacts alone. Changing
@@ -77,6 +79,46 @@ class DriftResult:
     unmeasured_variance: tuple[str, ...]
     caveats: tuple[str, ...]
     bootstrap: BcaResult | None
+
+
+def _matrix(per: Mapping[str, StructuringCounts],
+            ids: list[str]) -> np.ndarray:
+    """Counts as an (n, 5) integer matrix, row per encounter.
+
+    Vectorized because the alternative, summing 120 dataclasses per replicate
+    for both windows, makes 10,000 replicates take minutes rather than
+    seconds. The column order is _COUNT_FIELDS, which is StructuringCounts'
+    positional order, and _score depends on that.
+    """
+    return np.array([[getattr(per[i], f) for f in _COUNT_FIELDS] for i in ids],
+                    dtype=np.int64)
+
+
+def _score(matrix: np.ndarray, idx: np.ndarray) -> dict:
+    """Sum the resampled rows and score them through the ONE metric function.
+
+    Deliberately routed through evaluate.score_structuring rather than
+    reimplemented: drift measures the same micro-averaged, ratio-of-sums
+    quantity eval_runs publishes, or it is measuring something else and saying
+    it is drift.
+    """
+    return score_structuring(
+        StructuringCounts(*(int(v) for v in matrix[idx].sum(axis=0))))
+
+
+def _delta_stat(ref_m: np.ndarray, cur_m: np.ndarray,
+                metric: str) -> Callable[[np.ndarray], float | None]:
+    """CURRENT MINUS REFERENCE, so a negative delta is a degradation.
+
+    The sign convention is load-bearing: inverting it inverts every alert.
+    """
+    def stat(idx: np.ndarray) -> float | None:
+        ref, cur = _score(ref_m, idx)[metric], _score(cur_m, idx)[metric]
+        if ref is None or cur is None:
+            return None
+        return cur - ref
+
+    return stat
 
 
 def _structural_mismatches(reference: Mapping, current: Mapping,
@@ -135,4 +177,26 @@ def compare_structuring_windows(
     if reasons:
         return _not_comparable(metric, reasons, len(ref_ids & cur_ids))
 
-    raise NotImplementedError("the statistic lands in the next task")
+    ids = sorted(ref_ids)
+    ref_m, cur_m = _matrix(ref_counts, ids), _matrix(cur_counts, ids)
+    stat = _delta_stat(ref_m, cur_m, metric)
+
+    boot = paired_bca(n=len(ids), stat=stat, seed=seed, replicates=replicates)
+    lo, hi = boot.ci
+
+    full = np.arange(len(ids))
+    ref_value = _score(ref_m, full)[metric]
+    cur_value = _score(cur_m, full)[metric]
+
+    if lo > 0 or hi < 0:
+        verdict = DriftVerdict.DRIFT
+        direction = "improvement" if boot.d > 0 else "degradation"
+    else:
+        verdict = DriftVerdict.NO_DRIFT
+        direction = None
+
+    return DriftResult(
+        verdict=verdict, metric=metric, reference=ref_value, current=cur_value,
+        delta=boot.d, ci=boot.ci, mde=(hi - lo) / 2.0, direction=direction,
+        n_paired=len(ids), comparability=(), unmeasured_variance=(),
+        caveats=(), bootstrap=boot)

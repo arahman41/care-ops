@@ -6,8 +6,12 @@ to attribute their delta to the model, for three separately named reasons.
 """
 from __future__ import annotations
 
+import copy
 import dataclasses
+import json
 from pathlib import Path
+
+import numpy as np
 
 import pytest
 
@@ -86,3 +90,72 @@ def test_result_exposes_no_boolean_drift_field():
     fields = {f.name: str(f.type) for f in dataclasses.fields(DriftResult)}
     assert "drift_detected" not in fields
     assert not [n for n, t in fields.items() if "bool" in t], fields
+
+
+def degrade(payload: dict, *, fraction: float, seed: int) -> dict:
+    """Flip `found` off on a seeded share of reference facts.
+
+    Lives here, not in governance/: production code should not ship a tool for
+    making results worse. Flipping `found` lowers captured and
+    correctly_placed together, so score_structuring's invariants hold and the
+    degradation looks like a real capture regression rather than a corrupt
+    artifact.
+    """
+    rng = np.random.default_rng(seed)
+    out = copy.deepcopy(payload)
+    for example in out["examples"]:
+        for fact in example["ref"]:
+            if fact["found"] and rng.random() < fraction:
+                fact["found"] = False
+    return out
+
+
+@needs_windows
+def test_an_artifact_against_itself_shows_no_drift():
+    """Identical windows cancel exactly, because the indices are shared.
+
+    Zero width here is the paired design working, not a degenerate interval:
+    it is the same property tests/test_coding_bootstrap.py pins for two
+    identical arms.
+    """
+    payload = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+    result = compare_structuring_windows(payload, payload, controlled_pair=True,
+                                         replicates=2000)
+    assert result.verdict is DriftVerdict.NO_DRIFT
+    assert result.delta == 0.0
+    assert result.ci == (0.0, 0.0)
+    assert result.mde == 0.0
+    assert result.direction is None
+    assert result.n_paired == 120
+
+
+@needs_windows
+def test_an_injected_drop_is_flagged():
+    """The gate: a controlled degradation of window 2 must be flagged."""
+    payload = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+    degraded = degrade(payload, fraction=0.25, seed=11)
+
+    result = compare_structuring_windows(payload, degraded,
+                                         controlled_pair=True, replicates=2000)
+    assert result.verdict is DriftVerdict.DRIFT
+    assert result.direction == "degradation"
+    assert result.delta < 0
+    assert result.ci[1] < 0, "the interval must exclude zero on the losing side"
+    assert result.mde > 0
+
+
+@needs_windows
+def test_an_injected_improvement_is_flagged_as_drift_not_hidden():
+    """A significant move upward is still the model moving under a fixed config.
+
+    P4-1 filters alerts on direction. The detector does not decide that for it,
+    because a silent improvement is evidence the vendor changed something.
+    """
+    payload = json.loads(COMMITTED_AUG.read_text(encoding="utf-8"))
+    degraded = degrade(payload, fraction=0.25, seed=11)
+
+    result = compare_structuring_windows(degraded, payload,
+                                         controlled_pair=True, replicates=2000)
+    assert result.verdict is DriftVerdict.DRIFT
+    assert result.direction == "improvement"
+    assert result.delta > 0
