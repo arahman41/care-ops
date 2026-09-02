@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -537,6 +538,29 @@ def write_artifacts(result: RunResult, out_dir: Path = ARTIFACT_DIR) -> Path:
     return committed
 
 
+def per_encounter_counts(payload: Mapping) -> dict[str, StructuringCounts]:
+    """The five tallies per encounter, keyed by encounter_id.
+
+    replay() sums these to recompute the headline. P3-3 pairs them across two
+    windows to measure drift. One parser of the artifact format, so the
+    quantity drift moves cannot come apart from the quantity the headline
+    publishes.
+    """
+    out: dict[str, StructuringCounts] = {}
+    for ex in payload["examples"]:
+        ref, gen = ex["ref"], ex["gen"]
+        out[ex["encounter_id"]] = StructuringCounts(
+            ref_facts=len(ref),
+            captured=sum(1 for f in ref if f["found"]),
+            correctly_placed=sum(
+                1 for f in ref if f["found"] and f["section"] in f["acceptable"]),
+            gen_facts=len(gen),
+            supported=sum(
+                g["supported"] if isinstance(g, dict) else bool(g) for g in gen),
+        )
+    return out
+
+
 def replay(artifact: Path) -> dict:
     """Recompute the headline metrics from a committed artifact. No API calls.
 
@@ -547,20 +571,8 @@ def replay(artifact: Path) -> dict:
     """
     payload = json.loads(Path(artifact).read_text(encoding="utf-8"))
 
-    total = StructuringCounts(0, 0, 0, 0, 0)
-    for ex in payload["examples"]:
-        ref = ex["ref"]
-        gen = ex["gen"]
-        supported = sum(
-            g["supported"] if isinstance(g, dict) else bool(g) for g in gen)
-        total = total + StructuringCounts(
-            ref_facts=len(ref),
-            captured=sum(1 for f in ref if f["found"]),
-            correctly_placed=sum(
-                1 for f in ref if f["found"] and f["section"] in f["acceptable"]),
-            gen_facts=len(gen),
-            supported=supported,
-        )
+    total = sum(per_encounter_counts(payload).values(),
+                StructuringCounts(0, 0, 0, 0, 0))
 
     metrics = score_structuring(total)
 

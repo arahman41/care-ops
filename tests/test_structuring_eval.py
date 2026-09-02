@@ -17,7 +17,9 @@ from governance.aci_sections import ASSESSMENT, PLAN, SOAP_BUCKETS, SUBJECTIVE
 from governance.evaluate import StructuringCounts, score_structuring
 from governance.heldout import HeldoutExample
 from governance.llm_cache import Cache
-from governance.structuring_eval import evaluate_examples, replay, write_artifacts
+from governance.structuring_eval import (
+    evaluate_examples, per_encounter_counts, replay, write_artifacts,
+)
 from shared.schemas import SoapNote
 
 REF_NOTE = (
@@ -308,3 +310,21 @@ def test_a_committed_artifact_still_recomputes_its_own_headline(artifact):
     payload = out["payload"]
     assert payload["n_examples"] == len(payload["examples"])
     assert payload["split_digest"], "an artifact that names no split is unmoored"
+
+
+@pytest.mark.skipif(not COMMITTED,
+                    reason="no artifact committed yet; the first real run writes one")
+@pytest.mark.parametrize("artifact", COMMITTED, ids=lambda p: p.stem)
+def test_per_encounter_counts_sum_to_the_replayed_total(artifact):
+    """P3-3 drift reads its observations from the verdicts replay scores.
+
+    Drift pairs these counts across two windows. If the per-encounter split
+    ever stopped summing to what replay scores, drift would be measuring a
+    quantity the published headline is not, and nothing else would notice.
+    """
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    per = per_encounter_counts(payload)
+
+    assert len(per) == payload["n_examples"]
+    total = sum(per.values(), StructuringCounts(0, 0, 0, 0, 0))
+    assert total.__dict__ == payload["counts"]
