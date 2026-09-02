@@ -194,5 +194,10 @@ def _drift_summary(same_dataset: list[dict]) -> str:
         header = result.verdict.value.upper()
 
     if result.verdict is DriftVerdict.NOT_ATTRIBUTABLE:
-        return header + ". " + " ".join(result.caveats)
+        # drift.py's caveat strings carry no closing punctuation of their
+        # own (they are meant to be printed one per line); joined with a
+        # bare space they would run together as one unpunctuated sentence,
+        # which defeats the point of this being human-readable disclosure
+        # text. "; " keeps each caveat legible as its own clause.
+        return header + ": " + "; ".join(result.caveats) + "."
     return header
