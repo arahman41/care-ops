@@ -482,6 +482,104 @@ Not "per-agent decision accuracy". Accuracy is only claimable where a labeled re
   output tokens per note, nothing like the 6,477 P2-4 measured for coding at
   xhigh, which is why this run was cheap.
 - **P3-3 Drift detection.** Done when `governance/drift.py` compares a reference window against a current window and, given an injected accuracy or confidence drop in a controlled test, flags it. The test in `tests/test_drift.py` passes.
+
+  **DONE 2026-09-02.** Spec
+  `docs/superpowers/specs/2026-09-01-p3-3-drift-detection-design.md`, plan
+  `docs/superpowers/plans/2026-09-02-p3-3-drift-detection.md`. 411 passed
+  (from 386 passed / 1 xfailed), ruff clean. No API calls, no spend, no
+  database.
+
+  **The gate could have been closed by changing one dictionary key.** The
+  pre-existing stub walked `metric["value"]` for `dataset_drift`; evidently
+  0.5.1 nests it under `metric["result"]`. That one-character class of fix
+  makes the old xfail pass, and it would have flagged a shift between two
+  `numpy` normal distributions in a `confidence` column no agent in this repo
+  emits. The metric this phase unlocks would then have been a statement about
+  `numpy`. The key is fixed, and the detector was rebuilt around what the data
+  actually is.
+
+  **The data is paired, and that changes the instrument.** Both windows score
+  the same 120 held-out encounters, verified: identical `encounter_id` keysets
+  in the same order, identical `split_digest`. Evidently's `DataDriftPreset`
+  runs two-sample tests that treat the windows as independent and discard the
+  pairing. Accuracy drift therefore uses a paired BCa bootstrap over
+  encounters, reusing the engine `coding_bootstrap.py` already had (now
+  extracted to `governance/bootstrap.py` and shared), with the statistic
+  computed through the existing `score_structuring`. So drift adds **no metric
+  arithmetic of its own** and moves the same micro-averaged, ratio-of-sums
+  quantity `eval_runs` publishes, not the mean of per-encounter f1s, which is a
+  different number appearing nowhere in this project. Evidently keeps the
+  confidence stream, where two time ranges genuinely are independent samples.
+
+  **The finding: without the provenance downgrade, this project would today be
+  publishing a vendor-side improvement it cannot support.** Windows 7 and 25 at
+  10,000 replicates:
+
+  | | |
+  |---|---|
+  | f1 | 0.868563 -> 0.873771 |
+  | delta | +0.005208 |
+  | 95% BCa CI | [+0.000303, +0.010885] |
+  | minimum detectable effect | 0.005291 |
+  | verdict | **NOT_ATTRIBUTABLE** |
+
+  **The interval excludes zero.** On the statistics alone the paired test calls
+  this DRIFT, direction improvement. P3-2 had recorded three reasons that delta
+  is not yet drift; they are now enforced rather than documented, and the
+  verdict is downgraded for all three: `differing_fields` returns
+  `('max_tokens',)`, the generation-sampling baseline is unmeasured, and the
+  decomposer produced 6,553 reference facts against July's 6,550 from
+  byte-identical reference notes. Had `drift.py` returned the `drift_detected:
+  bool` its stub did, P4-1's dashboard would be rendering an improvement that
+  none of the evidence supports. `DriftResult` has no boolean field, and a test
+  asserts that structurally rather than trusting the docstring.
+
+  Note also that the MDE, 0.005291, is almost exactly the size of the delta.
+  The move sits at the very edge of what 120 paired encounters can resolve.
+
+  **Sensitivity, measured rather than assumed.** At 2,000 replicates against
+  window 2, seed 11:
+
+  | injected | facts flipped | delta f1 | verdict |
+  |---|---|---|---|
+  | 0.02% | 1 of 5,875 | -0.000093 | no_drift |
+  | 0.05% | 3 | -0.000278 | **drift** |
+  | 0.1% | 6 | -0.000463 | drift |
+  | 1% | 47 | -0.003906 | drift |
+  | 25% | 1,460 | -0.134755 | drift |
+
+  The floor is between one and three flipped facts. **These are
+  controlled-pair numbers**, where the two windows differ ONLY by the
+  injection, so they are an upper bound on sensitivity and not what two
+  independently generated windows give: the real pair's MDE is 0.0053, about
+  19 times larger, because two real generations differ everywhere at once. The
+  plan had guessed a 25% grid; the measured floor is roughly 500 times smaller,
+  and the grid was replaced rather than the guess being kept.
+
+  **A detector must fail loud, never closed.** The old stub returned `False`
+  when it could not find what it was looking for, so an evidently upgrade would
+  have turned into permanent silence from the alerting path. `_dataset_drift`
+  now raises on an unrecognized payload. A wrong "no drift" is believed; a
+  crash gets fixed.
+
+  **P2-4 is pinned, not merely hoped to be intact.** Extracting the shared
+  bootstrap engine touched the file the coding routing decision rests on, so
+  `tests/test_bootstrap_regression.py` was written and passing **before** the
+  refactor. It rebuilds the 113 analysis-set pairs from the committed
+  artifact's per-note tallies and asserts `d`, both CI endpoints, the
+  acceleration and the retained/dropped counts bit-identically, not
+  approximately: a refactor meant to preserve behavior either preserves it
+  exactly or has changed the draw order.
+
+  **Carried forward.** Nothing here closes the three reasons. `max_tokens`
+  needs a third window whose configuration matches window 2, not window 1.
+  `generation_sampling` needs a same-day repeat run, which is a paid run P3-2
+  deliberately deferred and this task did not spend either. `instrument` needs
+  a decomposition held fixed across windows, which is a design question, not a
+  run. Until then every real comparison this module makes is
+  `NOT_ATTRIBUTABLE`, and that is the correct output, not a defect to fix. No
+  `drift_alerts` table was added: P3-5 computes on demand, and an unused table
+  is a schema commitment made before there is a reader.
 - **P3-4 Transparency report generator.** Done when `governance/transparency.py` produces a report from real `model_inventory` data using ONC HTI-1 style fields, mapped to real disclosure language where possible.
 - **P3-5 Governance API.** Expose read endpoints for inventory, accuracy trend, and the transparency report so the dashboard has real data. Done when each endpoint returns registry-backed JSON, no mocked values.
 

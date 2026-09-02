@@ -1,17 +1,22 @@
 """Note-level paired BCa bootstrap for the difference in not-found rate.
 
+The numerics live in governance/bootstrap.py, shared with P3-3 drift
+detection. This module is the coding benchmark's domain layer over them: what a
+unit is (one analysis-set note), what the statistic is (difference of
+ratios-of-sums), and the scale the result is published on.
+
 Pure numerical. Everything internal is on the PROPORTION scale; the public
 result multiplies d and the CI endpoints by 100 to percentage points at the
-return boundary (spec §2, §4). BCa is hand-rolled: scipy's BCa uses the naive
-strict-< bias correction and does not implement the mid-rank tie convention
-this benchmark pins.
+return boundary (spec §2, §4).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import norm
+
+from governance.bootstrap import Stat, paired_bca
+from governance.bootstrap import replicate_deltas as _engine_replicate_deltas
 
 
 @dataclass(frozen=True)
@@ -56,76 +61,42 @@ def _stat(nf_a, ck_a, nf_b, ck_b, idx) -> float | None:
                       nf_b[idx].sum(), ck_b[idx].sum())
 
 
+def _stat_fn(pairs: list[NotePair]) -> tuple[int, Stat]:
+    """The engine's unit count and statistic for this analysis set."""
+    nf_a, ck_a, nf_b, ck_b = _arrays(pairs)
+    return len(pairs), lambda idx: _stat(nf_a, ck_a, nf_b, ck_b, idx)
+
+
 def replicate_deltas(pairs: list[NotePair], rng: np.random.Generator,
                      replicates: int) -> tuple[np.ndarray, int]:
     """Bootstrap replicate deltas (proportion) with SHARED indices per replicate.
     Returns (kept_deltas, dropped_count)."""
-    nf_a, ck_a, nf_b, ck_b = _arrays(pairs)
-    n = len(pairs)
-    kept: list[float] = []
-    dropped = 0
-    for _ in range(replicates):
-        idx = rng.integers(0, n, size=n)          # one draw, used for BOTH arms
-        s = _stat(nf_a, ck_a, nf_b, ck_b, idx)
-        if s is None:
-            dropped += 1
-        else:
-            kept.append(s)
-    return np.array(kept, float), dropped
+    n, stat = _stat_fn(pairs)
+    return _engine_replicate_deltas(n, stat, rng, replicates)
 
 
 def paired_bootstrap_bca(pairs: list[NotePair], seed: int,
                          replicates: int = 10000,
                          alpha: float = 0.05) -> BootResult:
     """95% BCa interval on the paired not-found-rate difference, in points."""
-    nf_a, ck_a, nf_b, ck_b = _arrays(pairs)
-    n = len(pairs)
-    full = np.arange(n)
+    n, stat = _stat_fn(pairs)
 
-    d_prop = _stat(nf_a, ck_a, nf_b, ck_b, full)
-    if d_prop is None:
+    # Checked here rather than letting the engine's generic message surface:
+    # "zero checkable codes" says what is actually wrong with the analysis set,
+    # and callers (and tests) match on it.
+    if stat(np.arange(n)) is None:
         raise ValueError(
             "analysis set has zero checkable codes for an arm; no point estimate")
 
-    rng = np.random.default_rng(seed)
-    deltas, dropped = replicate_deltas(pairs, rng, replicates)
-    B = len(deltas)
-    if B == 0:
-        raise ValueError("every bootstrap replicate was dropped (zero denom)")
-
-    # z0: mid-rank tie convention over the RETAINED replicates.
-    less = float(np.sum(deltas < d_prop))
-    eq = float(np.sum(deltas == d_prop))
-    z0 = norm.ppf((less + 0.5 * eq) / B)
-
-    # Acceleration: leave-one-note-out jackknife over the analysis set.
-    jack = [_stat(nf_a, ck_a, nf_b, ck_b, np.delete(full, i)) for i in range(n)]
-    jack = np.array([j for j in jack if j is not None], float)
-    u = jack.mean() - jack
-    num = float(np.sum(u ** 3))
-    den = 6.0 * float(np.sum(u ** 2)) ** 1.5
-    if den == 0.0:
-        a, a_degenerate = 0.0, True
-    else:
-        a, a_degenerate = num / den, False
-
-    # BCa-adjusted percentiles.
-    def _adj(z_alpha: float) -> float:
-        num_z = z0 + z_alpha
-        return float(norm.cdf(z0 + num_z / (1.0 - a * num_z)))
-
-    a1 = _adj(norm.ppf(alpha / 2.0))
-    a2 = _adj(norm.ppf(1.0 - alpha / 2.0))
-    lo = float(np.quantile(deltas, a1, method="linear"))
-    hi = float(np.quantile(deltas, a2, method="linear"))
+    r = paired_bca(n=n, stat=stat, seed=seed, replicates=replicates, alpha=alpha)
 
     return BootResult(
-        d=100.0 * d_prop,
-        ci=(100.0 * lo, 100.0 * hi),
-        seed=seed,
-        replicates=replicates,
-        retained=B,
-        dropped=dropped,
-        acceleration=a,
-        acceleration_degenerate=a_degenerate,
+        d=100.0 * r.d,
+        ci=(100.0 * r.ci[0], 100.0 * r.ci[1]),
+        seed=r.seed,
+        replicates=r.replicates,
+        retained=r.retained,
+        dropped=r.dropped,
+        acceleration=r.acceleration,
+        acceleration_degenerate=r.acceleration_degenerate,
     )
