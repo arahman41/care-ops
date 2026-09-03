@@ -1,0 +1,30 @@
+body {
+  margin: 0;
+  color: #1a202c;
+  background: #ffffff;
+}
+
+h1 { margin-bottom: 4px; }
+h2 { margin-top: 32px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+h3 { margin-top: 16px; margin-bottom: 4px; font-size: 1rem; }
+
+.muted { color: #718096; }
+.error { color: #c53030; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+th, td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+ul { padding-left: 20px; }
+li.alert { color: #9c4221; margin-bottom: 6px; }
