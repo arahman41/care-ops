@@ -6,10 +6,19 @@ from pydantic import BaseModel
 
 from shared.config import settings
 from shared.db import insert_encounter, insert_note
+from shared.schemas import SoapNote
 from services.intake.structure import structure_note, NoteStructuringError
 from services.intake.transcribe import transcribe
 
 app = FastAPI(title="Care Ops Copilot - Intake")
+
+# P4-3: returned instead of a real structure_note() call when
+# settings.fake_structuring is set. model="load-test-stub" so this can never
+# read back as a real structuring result (see shared/config.py).
+_FAKE_SOAP = SoapNote(
+    subjective="Load-test stub: no real transcript was structured.",
+    objective="Load-test stub.", assessment="Load-test stub.",
+    plan="Load-test stub.")
 
 
 class IntakeRequest(BaseModel):
@@ -38,10 +47,13 @@ def intake(req: IntakeRequest):
     if not transcript.strip():
         raise HTTPException(422, "Empty transcript")
 
-    try:
-        soap, model, effort = structure_note(transcript)
-    except NoteStructuringError as exc:
-        raise HTTPException(502, str(exc)) from exc
+    if settings.fake_structuring:
+        soap, model, effort = _FAKE_SOAP, "load-test-stub", None
+    else:
+        try:
+            soap, model, effort = structure_note(transcript)
+        except NoteStructuringError as exc:
+            raise HTTPException(502, str(exc)) from exc
     encounter_id = insert_encounter(req.external_ref, source)
     note_id = insert_note(encounter_id, soap.model_dump(), model, effort)
     return {"encounter_id": encounter_id, "note_id": note_id,

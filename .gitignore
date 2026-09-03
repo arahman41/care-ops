@@ -39,6 +39,9 @@ governance/.cache/
 governance/eval_artifacts/*.full.json
 # Partial (--limit) runs. Not measurements, so not committed beside them.
 governance/eval_artifacts/smoke/
+# P4-3: Locust's raw per-run CSVs. The parsed summary that matters is
+# committed as governance/eval_artifacts/load_test_<timestamp>.json instead.
+governance/eval_artifacts/load_test_raw/
 
 # Node
 node_modules/

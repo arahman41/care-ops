@@ -780,6 +780,41 @@ response) already have their own real-HTTP tests in
 real agent apps would prove the same isolation property twice for no new
 information.
 - **P4-3 Load test and latency capture.** Done when the Locust script in `scripts/load_test.py` runs against the intake path and captures p95 latency and requests per second from a committed, reproducible run.
+
+  **DONE 2026-09-03.** `python scripts/run_load_test.py` (also `make
+  load-test`). Artifact
+  `governance/eval_artifacts/load_test_20260903T173359Z.json`.
+
+  | users | spawn-rate | duration | requests | failures | req/s | p50 | p95 | p99 |
+  |---|---|---|---|---|---|---|---|---|
+  | 20 | 5 | 1m | 851 | 0 | 14.25 | 110ms | 240ms | 370ms |
+
+  **The user's own choice, not a default: structuring is stubbed, and the
+  headline numbers above are load-path latency, not end-to-end including a
+  live generation call.** The intake endpoint's only per-request cost is
+  `structure_note`'s Claude call; a load test that left it live would spend
+  real money on every simulated user (851 real calls at 20 concurrent users
+  for one minute) and measure the vendor's response-time variance rather
+  than this service's own concurrency handling. Given that choice
+  explicitly (three options put to the user; stubbing was the pick),
+  `shared/config.py::fake_structuring` makes `run_load_test.py` start the
+  intake service with a deterministic stub response
+  (`model="load-test-stub"`, never mistakable for a real structuring
+  result) instead. Every other part of the request is real: FastAPI
+  routing, Pydantic validation, and the real `insert_encounter`/
+  `insert_note` writes against a real Postgres.
+
+  Locust's own CSV is parsed for every number here; nothing is computed by
+  hand. `scripts/locustfile.py` tags every row it writes with
+  `external_ref="p4-3-load-test"`, and `run_load_test.py` deletes exactly
+  those rows after capturing the stats (851 of 851 cleaned up, verified by
+  a zero-count query afterward), so a load test run leaves no trace in a
+  shared database and can be re-run without accumulating junk.
+
+  **What this number is not**: an end-to-end latency claim including a
+  real Claude call. `scripts/locustfile.py`'s module docstring and this
+  entry both say so, so a future reader (or resume line) cannot lift "110ms
+  p50" out of context as if it included model generation time.
 - **P4-4 Documentation and demo.** Done when the README reflects the built system, every claimed metric links to the script that produces it, and a demo video is recorded, mirroring the ClinAIQA launch pattern.
 - **P4-5 Metric audit.** Done when a single command or short script regenerates every headline number, so nothing on the resume is unbacked.
 

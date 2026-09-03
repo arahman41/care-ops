@@ -94,6 +94,29 @@ def test_intake_with_audio_transcribes_then_structures(client, monkeypatch):
     assert resp.json()["soap"] == SOAP.model_dump()
 
 
+def test_fake_structuring_bypasses_structure_note_entirely(client, monkeypatch):
+    """P4-3: settings.fake_structuring lets the load test hit real DB writes
+    without a real (paid, slow, variable) Claude call on every request.
+    structure_note must not even be imported into the call path when it is
+    set, which pytest.fail catches if the branch is ever wired backwards."""
+    monkeypatch.setattr("services.intake.app.settings.fake_structuring", True)
+    monkeypatch.setattr(
+        "services.intake.app.structure_note",
+        lambda transcript: pytest.fail(
+            "structure_note must not be called when fake_structuring is set"))
+    monkeypatch.setattr("services.intake.app.insert_encounter",
+                        lambda external_ref, source_type: 1)
+    monkeypatch.setattr("services.intake.app.insert_note",
+                        lambda encounter_id, soap, model, effort: 1)
+
+    resp = client.post("/intake", json={"transcript": "anything"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["model"] == "load-test-stub"
+    assert body["effort"] is None
+
+
 def test_a_structuring_failure_is_a_502_not_a_500(client, monkeypatch):
     """The model or the pipeline failing is a bad-gateway, not a bug in this
     service. A raw 500 here would hide which side actually broke."""

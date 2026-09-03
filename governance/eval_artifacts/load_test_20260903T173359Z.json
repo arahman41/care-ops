@@ -1,0 +1,20 @@
+{
+  "measured_at": "2026-09-03T17:33:59.875942+00:00",
+  "config": {
+    "users": 20,
+    "spawn_rate": 5,
+    "duration": "1m",
+    "target": "POST /intake",
+    "fake_structuring": true
+  },
+  "stats": {
+    "request_count": 851,
+    "failure_count": 0,
+    "requests_per_second": 14.246156571989097,
+    "p50_ms": 110.0,
+    "p95_ms": 240.0,
+    "p99_ms": 370.0,
+    "max_ms": 1099.2750999994314
+  },
+  "rows_cleaned_up": 851
+}

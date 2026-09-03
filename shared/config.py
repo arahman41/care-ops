@@ -15,6 +15,16 @@ class Settings(BaseSettings):
 
     whisper_model_size: str = "base"
 
+    # P4-3: the intake endpoint's only per-request cost is structure_note's
+    # Claude call. A load test that leaves it live would spend real money on
+    # every simulated user and measure the vendor's response-time variance
+    # rather than this service's own concurrency handling. Set only for a
+    # load-test run of the intake service itself, never in normal operation:
+    # the stubbed note is stamped model="load-test-stub" so a row from a load
+    # test can never be mistaken for a real structuring result if it ever
+    # leaked into a shared database.
+    fake_structuring: bool = False
+
     intake_url: str = "http://intake:8000"
     prior_auth_url: str = "http://agent-prior-auth:8000"
     care_gap_url: str = "http://agent-care-gap:8000"

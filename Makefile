@@ -42,7 +42,7 @@ db-init:
 	docker compose exec -T db psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f - < db/schema.sql
 
 load-test:
-	locust -f scripts/locustfile.py --headless -u 20 -r 5 -t 1m --host http://localhost:8000
+	$(PY) scripts/run_load_test.py
 
 cluster-up:
 	kind create cluster --name care-ops || true
