@@ -82,3 +82,17 @@ CREATE TABLE IF NOT EXISTS model_inventory (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (agent_name, model, version)
 );
+
+-- P3-4: four more of HTI-1's nine source-attribute categories. Performance
+-- and validation (the other three: details/output, quantitative performance,
+-- and the update/revalidation schedule) are answered live from eval_runs and
+-- governance/drift.py, never stored here, so they cannot go stale the way
+-- governance/pricing.json and the P1-4 cache key both did.
+ALTER TABLE model_inventory ADD COLUMN IF NOT EXISTS
+    cautioned_out_of_scope_use TEXT;
+ALTER TABLE model_inventory ADD COLUMN IF NOT EXISTS
+    fairness_process_note TEXT;
+ALTER TABLE model_inventory ADD COLUMN IF NOT EXISTS
+    external_validation_note TEXT;
+ALTER TABLE model_inventory ADD COLUMN IF NOT EXISTS
+    maintenance_schedule TEXT;
