@@ -36,3 +36,10 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest --cov=shared --cov=services --cov=governance --cov-report=term-missing
+      # P4-5: every published headline number, regenerated from committed
+      # evidence. Fails the build if the README claims something this repo
+      # can no longer reproduce. Zero API calls. The two claims that need a
+      # live Postgres and the one that needs a cluster report as SKIPPED
+      # here rather than passing silently.
+      - name: Audit published metrics
+        run: python scripts/audit_metrics.py

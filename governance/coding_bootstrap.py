@@ -28,6 +28,25 @@ class NotePair:
     checkable_b: int
 
 
+def pairs_from_artifact(payload: dict) -> list[NotePair]:
+    """Rebuild the analysis-set pairs from a committed artifact's per-note tallies.
+
+    Sorted ids, matching assemble_run's sorted analysis ids. Pairing note i of
+    arm A with note j of arm B would still produce a plausible number, just
+    from the wrong comparison, which is the failure this ordering prevents.
+
+    Lived in tests/test_bootstrap_regression.py until P4-5, when the metric
+    audit needed the same rebuild. One code path rather than two, so the audit
+    and the regression test can never disagree about what "the pairs" are.
+    """
+    a, b = payload["arms"]["A"]["notes"], payload["arms"]["B"]["notes"]
+    return [NotePair(nf_a=a[i]["not_found"],
+                     checkable_a=a[i]["verified"] + a[i]["not_found"],
+                     nf_b=b[i]["not_found"],
+                     checkable_b=b[i]["verified"] + b[i]["not_found"])
+            for i in sorted(set(a) & set(b))]
+
+
 @dataclass(frozen=True)
 class BootResult:
     d: float                       # point estimate, percentage points
