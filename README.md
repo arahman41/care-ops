@@ -281,6 +281,10 @@ CSV for every number, and writes a committed artifact under
 |---|---|---|---|---|---|---|---|---|
 | 20 | 5 | 1m | 851 | 0 | 14.25 | 110ms | 240ms | 370ms |
 
+Artifact: `governance/eval_artifacts/load_test_20260903T173359Z.json`. The
+audit below pins these figures to that exact run, so a later load test
+produces a new artifact rather than silently redefining what this table means.
+
 This is load-path latency for the FastAPI service, real Pydantic validation,
 and a real Postgres write on every request. It is explicitly **not** an
 end-to-end number including a live Claude generation call, and should never
@@ -288,9 +292,44 @@ be quoted as one.
 
 ### Test suite
 
-**430 passed**, ruff clean, **96% line coverage** (`shared`, `services`,
+**447 passed**, ruff clean, **96% line coverage** (`shared`, `services`,
 `governance`, measured against a live Postgres, matching CI's own
 `postgres:16` service). `make test` / `make cov`.
+
+### Every number above, audited
+
+```
+make audit          # regenerate every published number, no infrastructure needed
+make audit-full     # also re-run the suite, closing the two claims that need Postgres
+```
+
+`governance/audit.py` carries a manifest of every headline number this
+project publishes, together with what backs each one. `scripts/audit_metrics.py`
+regenerates them from committed evidence and **fails** if a published value
+cannot be reproduced. It runs in CI on every push, so a stale README is a
+red build rather than something a reader discovers.
+
+Nothing is taken on trust, and nothing that could not be checked is reported
+as if it had been. Each claim is backed as strongly as its evidence allows:
+
+| tier | what it proves | example |
+|---|---|---|
+| recomputed | derived from primitives in a committed artifact, so a corrupted stored aggregate is caught too | the 0.869 F1, recomputed from per-fact verdicts |
+| artifact | read from a committed artifact's stored field; catches a stale README, not a corrupted artifact | the load-test p95 |
+| environment | needs a live cluster or database; checked when available, reported as skipped when not | 6/6 pods, the test count |
+| observed | a recorded live run or human audit, not re-derivable on demand; cross-checked against the document that records it | the 29 / 30 judge audit |
+
+Of the 48 published claims, 40 are regenerated with no infrastructure at
+all, 3 more need a live Postgres or cluster (`make audit-full`), and 5 are
+recorded observations that cannot be re-derived on demand and are instead
+cross-checked against the document that records them. The counts a given run
+prints depend on what infrastructure is present, which is why a skipped
+claim is reported as skipped and never as passed.
+
+The audit has already earned its place: it caught `governance/pricing.json`
+describing the coding cost margin as $0.85, which is the two rounded figures
+subtracted, where the exact costs subtracted and then rounded give the $0.84
+stated everywhere else.
 
 ## Demo
 

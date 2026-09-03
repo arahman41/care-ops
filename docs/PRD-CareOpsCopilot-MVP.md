@@ -211,16 +211,19 @@ Every metric above must be reproducible from a committed script before it appear
 
 ## 12. Definition of Done (v1 Launch Checklist)
 
-- [ ] One sample encounter runs end to end: audio or transcript in, SOAP note out.
-- [ ] All three agents run and produce structured, logged output.
-- [ ] All three agents plus orchestrator run as separate Kubernetes services on a local cluster.
-- [ ] Model registry logs every agent decision with confidence, timestamp, and version.
-- [ ] Drift detection flags an injected accuracy drop in a controlled test.
-- [ ] Dashboard shows model inventory, drift chart, and one transparency report from real data.
-- [ ] Automated test suite passes in CI (GitHub Actions), with count and coverage reported.
-- [ ] Latency and load metrics captured from a committed, reproducible script.
-- [ ] README and demo video published, mirroring the ClinAIQA launch pattern.
-- [ ] Every claimed metric is reproducible from a committed script.
+Ticked 2026-09-03, at the close of P4-5. Each box names the task and the
+evidence in docs/ROADMAP.md that closes it.
+
+- [x] One sample encounter runs end to end: audio or transcript in, SOAP note out. (P1-3, and P4-2 as an automated test)
+- [x] All three agents run and produce structured, logged output. (P2-1 to P2-3, P2-7)
+- [x] All three agents plus orchestrator run as separate Kubernetes services on a local cluster. (P2-5, 6/6 pods)
+- [x] Model registry logs every agent decision with confidence, timestamp, and version. (P2-7)
+- [x] Drift detection flags an injected accuracy drop in a controlled test. (P3-3, floor measured at 3 flipped facts of 5,875)
+- [x] Dashboard shows model inventory, drift chart, and one transparency report from real data. (P3-5, P4-1)
+- [x] Automated test suite passes in CI (GitHub Actions), with count and coverage reported. (447 passed, 96%)
+- [x] Latency and load metrics captured from a committed, reproducible script. (P4-3)
+- [ ] README and demo video published, mirroring the ClinAIQA launch pattern. **README done (P4-4); the video is not recorded.** docs/DEMO-SCRIPT.md is the script for it. This is the one box that is not a code task, and it stays open rather than being quietly reworded to something already true.
+- [x] Every claimed metric is reproducible from a committed script. (P4-5, `make audit`, enforced in CI)
 
 ---
 

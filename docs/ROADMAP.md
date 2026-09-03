@@ -840,7 +840,88 @@ information.
   video is not yet published, rather than implying it exists.
 - **P4-5 Metric audit.** Done when a single command or short script regenerates every headline number, so nothing on the resume is unbacked.
 
+  **DONE 2026-09-03.** `make audit` (`scripts/audit_metrics.py`,
+  `governance/audit.py`). 447 passed (from 430), ruff clean, 96% coverage,
+  `governance/audit.py` itself at 96%. Zero API calls, zero cost.
+
+  48 published claims are declared in one reviewable manifest with what
+  backs each: **29 recomputed** from primitives in a committed artifact,
+  **11 read** from a committed artifact's stored field, **3 needing live
+  infrastructure**, and **5 recorded observations** that cannot be
+  re-derived. A full run (`make audit-full`, cluster up, live Postgres)
+  reports 43 verified by regeneration, 5 observations cross-checked, 0
+  skipped, 0 failed.
+
+  **Three properties make it an audit rather than a report.**
+  1. *No circularity.* Published values are literals in the manifest;
+     regenerated values come from the artifacts. `replay()` and
+     `replay_coding()` refuse to agree with a stored aggregate they cannot
+     reproduce, so editing an artifact to match a wrong README fails before
+     the comparison does.
+  2. *No borrowed arithmetic.* Nothing here reimplements a metric. The
+     strict-subset numbers, for instance, are recomputed by filtering
+     `per_encounter_counts` to the non-fused notes and scoring them with the
+     same `score_structuring` the headline uses. An audit with its own copy
+     of the metric math would eventually disagree with the system it audits,
+     and the disagreement would be the audit's fault.
+  3. *No silent pass for what it could not check.* A claim needing a cluster
+     or a database is reported SKIPPED, never verified, and the summary
+     counts verified, cross-checked, skipped and failed separately, so
+     "nothing is unbacked" is checkable rather than asserted.
+
+  **The audit fails on demand, and that is tested.**
+  `tests/test_audit.py` publishes a deliberately wrong number and asserts a
+  MISMATCH, because an audit that always returns "verified" is worse than
+  none: it converts an unchecked claim into a checked-looking one. That is
+  the same failure P3-3 already fixed once, when the drift stub returned
+  False whenever it could not find what it was looking for. Absence of a
+  regenerated value is UNBACKED, not VERIFIED, and that is tested too.
+
+  **It found three things on its first runs, which is the point.**
+  1. `governance/pricing.json` described the coding cost margin as **$0.85**.
+     That is $4.01 minus $3.16, the two ROUNDED figures subtracted. The exact
+     costs give $4.006914 minus $3.161985 = $0.844929, so **$0.84**, which is
+     what ROADMAP P2-4, P3-2 and the README all say. One file disagreed with
+     every other statement of the same number by a cent, in a note attached
+     to a cost-based routing decision. Fixed, and `coding_cost_margin` now
+     recomputes in the correct order on every run.
+  2. The README published "3 flipped facts out of **5,875**" with nothing
+     tying 5,875 to anything. It is window 2's CAPTURED fact count (not its
+     6,553 reference facts), because `degrade()` only flips facts that are
+     currently found. Now recomputed as `drift_injection_pool`, so the
+     denominator of the sensitivity claim rests on evidence.
+  3. Adding this task's own 17 tests made the README's "430 passed" stale
+     within the same commit. The audit caught it immediately; the README now
+     says 447, and CI will catch the next one.
+
+  **Wired into CI**, so a stale published number is a red build rather than
+  something a reader of the resume discovers. The suite and cluster claims
+  report SKIPPED there and are closed locally with `make audit-full`.
+
+  **Carried forward.** The 5 OBSERVED claims (the P2-6 concurrency run, the
+  29/30 judge audit, the sensitivity fraction) are cross-checked for
+  consistency between the README and the document recording them, which is
+  the strongest check available for a number that cannot be recomputed. The
+  load-test claims are pinned to one named artifact, so re-running the load
+  test produces a new artifact and fails the audit until the README cites
+  it, rather than silently redefining the published figures.
+
 **Exit gate:** the Definition of Done checklist in the PRD is fully checked, and every metric is reproducible.
+
+**NOT MET, by one box, 2026-09-03.** Nine of the ten Definition of Done
+items are ticked in `docs/PRD-CareOpsCopilot-MVP.md` section 12, each
+naming the task and evidence that closes it. The tenth, "README and demo
+video published", is half done: the README is rewritten and every number in
+it is audited (P4-4, P4-5), but the video is not recorded, and recording
+one is a manual step rather than a code task. `docs/DEMO-SCRIPT.md` is the
+scene-by-scene script for it.
+
+The second clause of the gate, "every metric is reproducible", **is** met and
+is now machine-checked: `make audit` regenerates all 48 published claims and
+fails the build if one cannot be reproduced. Phase 4 is therefore complete as
+engineering work, and the gate stays formally open on a recording. Do not
+tick that box until the video exists.
+
 **Metric unlocked:** end-to-end p95 latency and requests per second, test count and coverage percentage.
 
 ---

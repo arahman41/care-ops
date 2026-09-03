@@ -1,7 +1,7 @@
-.PHONY: help install dev-install lint test cov up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay coding-benchmark coding-benchmark-pilot coding-benchmark-replay
+.PHONY: help install dev-install lint test cov audit audit-full up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay coding-benchmark coding-benchmark-pilot coding-benchmark-replay
 
 help:
-	@echo "Targets: install dev-install lint test cov up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay coding-benchmark coding-benchmark-pilot coding-benchmark-replay"
+	@echo "Targets: install dev-install lint test cov audit audit-full up down db-init load-test cluster-up cluster-down eval-structuring eval-structuring-primock eval-structuring-replay coding-benchmark coding-benchmark-pilot coding-benchmark-replay"
 
 # Use the project venv, not whatever `python` resolves to on PATH. On Windows
 # a bare `python` hits the system install, which has none of the pinned deps:
@@ -40,6 +40,15 @@ down:
 
 db-init:
 	docker compose exec -T db psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f - < db/schema.sql
+
+# P4-5. Regenerates every published headline number from committed evidence
+# and fails if one cannot be reproduced. Zero API calls, zero cost.
+audit:
+	$(PY) scripts/audit_metrics.py
+
+# Also re-runs the suite, to close the two claims that need a live Postgres.
+audit-full:
+	$(PY) scripts/audit_metrics.py --with-suite
 
 load-test:
 	$(PY) scripts/run_load_test.py

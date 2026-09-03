@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from governance.coding_bootstrap import NotePair, paired_bootstrap_bca
+from governance.coding_bootstrap import paired_bootstrap_bca, pairs_from_artifact
 
 ARTIFACT = (Path(__file__).resolve().parents[1] / "governance" /
             "eval_artifacts" / "coding_20260807T214249Z.json")
@@ -23,27 +23,17 @@ ARTIFACT = (Path(__file__).resolve().parents[1] / "governance" /
 # constants shows up here as a failure instead of being followed silently.
 SEED, REPLICATES = 20260722, 10000
 
-
-def _pairs_from_artifact(payload: dict) -> list[NotePair]:
-    """Rebuild the analysis-set pairs from the stored per-note tallies.
-
-    Sorted ids, matching assemble_run's sorted analysis ids. Pairing note i of
-    arm A with note j of arm B would still produce a plausible number, just
-    from the wrong comparison, which is the failure this ordering prevents.
-    """
-    a, b = payload["arms"]["A"]["notes"], payload["arms"]["B"]["notes"]
-    return [NotePair(nf_a=a[i]["not_found"],
-                     checkable_a=a[i]["verified"] + a[i]["not_found"],
-                     nf_b=b[i]["not_found"],
-                     checkable_b=b[i]["verified"] + b[i]["not_found"])
-            for i in sorted(set(a) & set(b))]
+# pairs_from_artifact moved to governance/coding_bootstrap.py in P4-5, when
+# the metric audit needed the identical rebuild. The assertions below are
+# unchanged and still bit-identical, so they are what proves the move was
+# behavior-preserving.
 
 
 @pytest.mark.skipif(not ARTIFACT.exists(),
                     reason="coding artifact not committed")
 def test_committed_coding_artifact_reproduces_its_published_interval():
     payload = json.loads(ARTIFACT.read_text(encoding="utf-8"))
-    pairs = _pairs_from_artifact(payload)
+    pairs = pairs_from_artifact(payload)
     assert len(pairs) == payload["arms"]["A"]["n_notes"] == 113
 
     result = paired_bootstrap_bca(pairs, seed=SEED, replicates=REPLICATES)
