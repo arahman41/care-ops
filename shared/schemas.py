@@ -165,3 +165,49 @@ class DecisionRecord(BaseModel):
     confidence: float
     latency_ms: int | None
     created_at: datetime
+
+
+# ---------- P3-5: governance read API ----------
+
+class InventoryRow(BaseModel):
+    """One model_inventory row, as returned by governance/api.py::inventory_rows.
+
+    Every HTI-1 style field the registry stores for one agent/model/version,
+    not the transparency report's field mapping (see
+    governance/transparency.py for that; it reads the same table but shapes
+    it into the nine HTI-1 categories)."""
+    id: int
+    agent_name: str
+    model: str
+    version: str
+    intended_use: str | None
+    training_data_note: str | None
+    known_limitations: str | None
+    updated_at: datetime
+    cautioned_out_of_scope_use: str | None
+    fairness_process_note: str | None
+    external_validation_note: str | None
+    maintenance_schedule: str | None
+
+
+class AccuracyTrendRow(BaseModel):
+    """One eval_runs row, as returned by governance/api.py::accuracy_trend.
+
+    accuracy/f1/precision/recall are None for every agent outside
+    governance.evaluate.SCOREABLE (the P3-1 guard writes SQL NULL for
+    coding, care_gap, and prior_auth on purpose). metrics carries whatever
+    that agent measures instead, e.g. coding's verified_rate. A consumer
+    that renders this row must not paper over the None with a default."""
+    id: int
+    agent_name: str
+    model: str
+    model_effort: str | None
+    window_label: str
+    dataset_ref: str
+    n_examples: int
+    accuracy: float | None
+    f1: float | None
+    precision: float | None
+    recall: float | None
+    metrics: dict | None
+    created_at: datetime

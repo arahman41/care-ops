@@ -654,7 +654,46 @@ Not "per-agent decision accuracy". Accuracy is only claimable where a labeled re
   intervention a clinician sees.
 - **P3-5 Governance API.** Expose read endpoints for inventory, accuracy trend, and the transparency report so the dashboard has real data. Done when each endpoint returns registry-backed JSON, no mocked values.
 
+  **DONE 2026-09-03.** 428 passed (from 418), ruff clean, 100% line coverage
+  on both new/touched files (`governance/api.py`,
+  `services/orchestrator/app.py`).
+
+  Two new read-only queries in `governance/api.py` (`inventory_rows`,
+  `accuracy_trend`), and three new GET endpoints on the orchestrator:
+  `/governance/inventory`, `/governance/accuracy-trend` (optional
+  `agent_name` filter), and `/governance/transparency-report`, the last
+  reusing P3-4's `build_report()` directly rather than a third query.
+
+  `accuracy_trend` returns the accuracy family exactly as stored, oldest
+  window first, including the SQL NULLs the P3-1 guard writes for coding,
+  care_gap, and prior_auth. It does not paper over those with a client-side
+  default: the whole point of `assert_accuracy_family_allowed` is that a
+  verified rate or a rules-pass rate must never be readable as an accuracy,
+  and a trend endpoint that hid the NULL would recreate that failure one
+  layer out, in whatever chart P4-1 draws from it.
+
+  Tested at both layers, matching P2-7's `decisions_for_encounter`
+  precedent: `governance/api.py`'s two queries are proven against a real
+  Postgres in `tests/test_governance_api.py` (self-contained, own fixtures
+  and cleanup, run against the local dev database as well as verified
+  clean by CI), and the three orchestrator endpoints are proven as HTTP
+  wiring in `tests/test_orchestrator_integration.py` with the underlying
+  calls monkeypatched, the same split `test_registry.py` /
+  `test_orchestrator_integration.py` already use for the P2-7 endpoint.
+
+  No new endpoint for drift alerts: the roadmap text for this task names
+  three endpoints, not four, and P4-1's "active drift alerts" panel is
+  built from the accuracy-trend series client-side rather than a fourth
+  read path duplicating `governance/drift.py`'s logic behind an endpoint
+  nobody has designed a contract for yet.
+
 **Exit gate:** an injected accuracy drop is flagged by drift detection, and a transparency report renders from real data.
+
+**MET, and Phase 3 is now fully done including its optional-looking last
+task.** P3-3 and P3-4 already satisfied the literal exit-gate text; P3-5
+was the one task in this phase's list without a DONE entry, and closing it
+is what P4-1 (dashboard wiring) actually depends on per the dependency
+notes below.
 **Metric unlocked:** drift detection sensitivity on a controlled injected drop.
 
 ---
