@@ -744,6 +744,41 @@ notes below.
   data reads `NOT_ATTRIBUTABLE`, so the panel correctly shows zero active
   alerts rather than a fabricated one.
 - **P4-2 End-to-end integration test.** Done when a single test drives audio or transcript in through to three logged agent decisions and asserts the registry rows exist.
+
+  **DONE 2026-09-03.** `tests/test_e2e_pipeline.py`. 429 passed (from 428),
+  ruff clean.
+
+  Real, not a wiring test wearing an E2E name: a real Postgres, the real
+  intake app writing a real encounter and note, the real orchestrator
+  fanning out over real HTTP to the three REAL agent apps (not stubs, see
+  below), care_gap's real deterministic rules engine, and all three
+  agents' own real `log_decision` calls landing in a real
+  `agent_decisions` table, read back through the real
+  `/encounters/{id}/decisions` endpoint. Only two calls are mocked, at the
+  narrowest point that still exercises everything downstream for real:
+  `services.intake.structure.structure_note`'s underlying model call, and
+  each of `prior_auth`'s and `coding`'s `shared.llm.call`. Parsing, schema
+  validation, vocabulary classification, and the registry write all run
+  unmocked. Nothing here spends against the Anthropic API or costs money
+  to run in CI on every push, matching how P1-4/P2-4/P3-2's paid runs were
+  deliberately kept out of the automated suite and run live by hand
+  instead.
+
+  `tests/live_server.py` is new: the real-uvicorn-on-an-ephemeral-port
+  helper P2-6's `test_orchestrator_integration.py` already had (there
+  wrapping three throwaway stub apps) is extracted and reused here to wrap
+  the three genuine agent apps instead. One code path for both, the same
+  principle P3-3 applied when it extracted `governance/bootstrap.py`;
+  `test_orchestrator_integration.py` now imports it too rather than
+  keeping a second copy, and that refactor's own 14 tests were re-run
+  green before this entry was written.
+
+**Not** a per-scenario suite: only the happy path is covered here, since
+the failure-isolation scenarios (an agent down, a timeout, a malformed
+response) already have their own real-HTTP tests in
+`test_orchestrator_integration.py` from P2-6, and duplicating those against
+real agent apps would prove the same isolation property twice for no new
+information.
 - **P4-3 Load test and latency capture.** Done when the Locust script in `scripts/load_test.py` runs against the intake path and captures p95 latency and requests per second from a committed, reproducible run.
 - **P4-4 Documentation and demo.** Done when the README reflects the built system, every claimed metric links to the script that produces it, and a demo video is recorded, mirroring the ClinAIQA launch pattern.
 - **P4-5 Metric audit.** Done when a single command or short script regenerates every headline number, so nothing on the resume is unbacked.
