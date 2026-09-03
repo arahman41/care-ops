@@ -703,6 +703,46 @@ notes below.
 **Goal:** A working dashboard, end-to-end and load tests, and a public launch.
 
 - **P4-1 Dashboard wiring.** Done when the React app renders model inventory, a per-agent accuracy trend chart, active drift alerts, and one transparency report, all from the Phase 3 endpoints with no hardcoded values.
+
+  **DONE 2026-09-03.** `dashboard/src/App.jsx` fetches the three P3-5
+  endpoints directly (`/governance/inventory`, `/governance/accuracy-trend`,
+  `/governance/transparency-report`), proxied by `vite.config.js` straight
+  to the orchestrator's real paths (no `/api` prefix invented on either
+  side). No values are hardcoded; every panel renders `null`/loading/error
+  states explicitly rather than silently showing nothing.
+
+  Verified live, not only by inspection: local `db` container started,
+  `services/orchestrator/app.py` run directly against it, `npm run build`
+  and the vite dev server both run, and the rendered page loaded in a real
+  browser tab. Confirmed via the browser's own network log that all three
+  endpoints returned 200 with the real committed registry data (the actual
+  P2-4 coding benchmark row, P3-2's two structuring windows, and P3-4's
+  live-joined transparency text all rendered on the page), then the local
+  db and dev processes were stopped again.
+
+  **A real bug found and fixed during that live check, not by inspection.**
+  The first version grouped the accuracy-trend chart by `agent_name` alone.
+  `note_structuring` has three real eval_runs rows: two share the
+  window_label `"v1"` (row 7, ACI-Bench n=120, and row 8, PriMock57 n=7;
+  see P3-1's backfill entry) because a window label is unique per dataset,
+  not globally. Grouping by agent alone drew one line connecting an
+  ACI-Bench point to a PriMock57 point as though they were one continuous
+  series, which is exactly the kind of fabricated comparison this project's
+  governance layer exists to prevent everywhere else. Fixed by grouping on
+  `(agent_name, dataset_ref)`: ACI-Bench's two real windows now draw one
+  line, PriMock57's single n=7 measurement renders as an unconnected point,
+  matching transparency.py's own "only one window filed for this dataset;
+  no drift comparison possible yet" language for the same case.
+
+  Active drift alerts are derived client-side from the transparency
+  report's own "Updates and continued validation" text rather than a
+  fourth endpoint: P3-5's roadmap text named three endpoints, and that
+  field already carries `governance/drift.py`'s real verdict (see P3-4).
+  The panel filters for a validation string that opens with `DRIFT:`
+  specifically, distinct from `NO_DRIFT`, `NOT_ATTRIBUTABLE`, and
+  `NOT_COMPARABLE`, all of which start with different words. Today's real
+  data reads `NOT_ATTRIBUTABLE`, so the panel correctly shows zero active
+  alerts rather than a fabricated one.
 - **P4-2 End-to-end integration test.** Done when a single test drives audio or transcript in through to three logged agent decisions and asserts the registry rows exist.
 - **P4-3 Load test and latency capture.** Done when the Locust script in `scripts/load_test.py` runs against the intake path and captures p95 latency and requests per second from a committed, reproducible run.
 - **P4-4 Documentation and demo.** Done when the README reflects the built system, every claimed metric links to the script that produces it, and a demo video is recorded, mirroring the ClinAIQA launch pattern.
