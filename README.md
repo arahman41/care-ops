@@ -6,34 +6,34 @@ This is a portfolio and demonstration project. It uses public de-identified data
 
 ## Why this exists
 
-The build closes four named skill areas in one coherent project: Kubernetes orchestration, MLOps drift detection, agentic orchestration, and LLM fine-tuning (fine-tuning is a marked stretch goal). It sits at the intersection of ambient clinical documentation and AI governance, two of the fastest-growing healthcare AI hiring categories in 2026.
+The build closes four named skill areas in one coherent project: Kubernetes orchestration, MLOps drift detection, agentic orchestration, and LLM fine-tuning (fine-tuning is a marked stretch goal, not yet started). It sits at the intersection of ambient clinical documentation and AI governance, two of the fastest-growing healthcare AI hiring categories in 2026.
 
 It builds on ClinAIQA, a pre-deployment LLM audit harness. Where ClinAIQA audited output before deployment, Care Ops Copilot monitors decisions continuously in production.
 
 ## Architecture
 
-Three layers.
+Three layers, all built and running, not diagrammed.
 
-1. **Ambient intake.** Whisper transcribes audio, Claude structures the transcript into a SOAP note as versioned JSON.
-2. **Multi-agent routing.** A LangGraph graph fans the note out to three specialist agents (prior-auth, care-gap, coding and eligibility), each returning a structured artifact with a confidence score. Each agent is its own containerized service on Kubernetes.
-3. **Governance and drift.** Every agent decision is logged to a Postgres model registry. A held-out labeled set periodically re-scores accuracy, Evidently flags drift, and a React dashboard shows inventory, accuracy trends, drift alerts, and an ONC HTI-1 style transparency report.
+1. **Ambient intake.** Whisper transcribes audio, Claude structures the transcript into a SOAP note as versioned JSON. `services/intake`.
+2. **Multi-agent routing.** A LangGraph graph fans a note out to three specialist agents (prior-auth, care-gap, coding and eligibility) concurrently, each returning a structured artifact with a confidence score, never free text. Each agent is its own containerized FastAPI service on Kubernetes; a single agent's failure does not abort the other two. `services/orchestrator`, `services/agent_*`.
+3. **Governance and drift.** Every agent decision is logged to a Postgres model registry. A held-out labeled set periodically re-scores note-structuring accuracy, a paired bootstrap flags drift with a stated confidence interval (not a bare yes/no), and a React dashboard shows model inventory, accuracy trends, drift alerts, and an ONC HTI-1 style transparency report, all read live off the registry. `governance/`, `dashboard/`.
 
-See `docs/PRD-CareOpsCopilot-MVP.md` and `docs/TECH-DESIGN.md` for detail.
+See `docs/PRD-CareOpsCopilot-MVP.md` and `docs/TECH-DESIGN.md` for detail, and `docs/ROADMAP.md` for what shipped when, with evidence for every claim below.
 
 ## Repository layout
 
 ```
 care-ops-copilot/
-  docs/            PRD and technical design
+  docs/            PRD, technical design, and the full phase-by-phase roadmap
   db/              Postgres schema (model registry)
   shared/          config, schemas, db, registry, Claude routing
   services/        intake, orchestrator, and the three agents (FastAPI)
-  governance/      held-out evaluation, Evidently drift, transparency report
-  dashboard/       React front end (Vite)
-  k8s/             Kubernetes manifests for local cluster
+  governance/      held-out evaluation, drift detection, transparency report
+  dashboard/       React front end (Vite), reads the governance API live
+  k8s/             Kubernetes manifests for the local cluster
   .github/         GitHub Actions CI
-  tests/           contract, rules, drift, and metric tests
-  scripts/         load test and dataset instructions
+  tests/           contract, rules, drift, registry, and end-to-end tests
+  scripts/         evaluation, benchmark, drift-check, and load-test runners
   data/            gitignored, never holds real PHI
 ```
 
@@ -64,14 +64,22 @@ Local Kubernetes:
 
 ```bash
 make cluster-up               # kind cluster plus kubectl apply -f k8s/
-kubectl get pods -n care-ops  # expect db, intake, orchestrator, three agents
+kubectl get pods -n care-ops  # 6/6 Running: db, intake, orchestrator, three agents
 ```
 
 See `k8s/README.md` for image build and secret steps.
 
+Dashboard (reads the live governance API, nothing hardcoded):
+
+```bash
+cd dashboard && npm install && npm run dev
+# then, separately, run the orchestrator so the dev proxy has something to hit:
+uvicorn services.orchestrator.app:app --port 8001
+```
+
 ## Model routing
 
-Routing is centralized in `shared/llm.py`. Structuring and prior-auth use Sonnet 5 at high effort, care-gap is rules-based with Haiku only for optional phrasing, coding uses Sonnet 5 at xhigh with an Opus 4.8 benchmark, and the transparency report uses Haiku. Stable prompt content is cached and offline re-scoring runs through the Batch API.
+Routing is centralized in `shared/llm.py`. Note structuring and prior-auth use Sonnet 5 at high effort, care-gap is a deterministic rules engine with Haiku only for optional phrasing, coding uses **Opus 4.8 at high** (the P2-4 benchmark's routed configuration, a cost decision, not a demonstrated quality win, see below), and the transparency report uses Haiku for template fill. Stable prompt content is cached and offline re-scoring runs through the Batch API.
 
 ## Hard rules
 
@@ -79,13 +87,11 @@ Routing is centralized in `shared/llm.py`. Structuring and prior-auth use Sonnet
 - No notebooks in the repo.
 - No em dashes anywhere, in code, comments, or docs.
 - The held-out evaluation set is leak-free and never tunes rules or prompts.
-- Report measured metrics only.
-
-## Success metrics (report honestly)
-
-Note-structuring accuracy, per-agent decision accuracy, end-to-end p95 latency and requests per second, drift detection sensitivity on an injected drop, and test count and coverage. Every claimed metric must be reproducible from a committed script.
+- Report measured metrics only, and name exactly what was measured. "Coding accuracy" is never claimed; see the coding section below for why.
 
 ## Measured results
+
+Every number below is reproduced by the command next to it. `docs/ROADMAP.md` carries the full evidence trail (live runs, exact artifact filenames, `eval_runs` row numbers) for each one.
 
 ### Note structuring, ACI-Bench held-out (n = 120)
 
@@ -170,10 +176,134 @@ nothing *could* be filed wrongly. `eval_runs.accuracy` is written NULL and the
 replay declines to print it. A 1.0 there would be the most flattering number on
 the board and would mean nothing at all.
 
+### Multi-agent orchestration on Kubernetes
+
+Three agents plus the orchestrator, each an independent Deployment and
+Service (`k8s/`). `make cluster-up`, then live-verified: `kubectl get pods
+-n care-ops` shows 6/6 `Running` (Postgres, intake, orchestrator, three
+agents), each with a real `readinessProbe`, and the orchestrator reaches
+every agent by Kubernetes Service DNS.
+
+Concurrency is proved by more than a claim: three agents summed **9,652 ms**
+of individual work in one real run (care-gap 1 ms, prior-auth 4,284 ms,
+coding 5,367 ms), yet the pipeline request returned in **5,661 ms**, just
+over the slowest agent, which is arithmetically impossible if the graph ran
+them sequentially. Isolation is proved the same way: scaling the coding
+agent's Deployment to zero replicas mid-run still returned prior-auth and
+care-gap's real artifacts in the same request, with `errors.coding` naming
+the exact failed URL rather than a generic message.
+
+### Coding and eligibility: a routing decision, not an accuracy claim
+
+**No held-out set carries gold ICD-10 or CPT codes.** Neither ACI-Bench nor
+PriMock57 labels billing codes, so there is nothing to compute the precision
+or recall of a *correct* code against. What this project measures instead is
+a **verified rate**: whether a suggested code exists in the vendored CMS
+release. A model can score a perfect verified rate while suggesting codes
+that are clinically wrong for the note. This project never calls that number
+"coding accuracy."
+
+`make coding-benchmark-replay` recomputes the routing benchmark from the
+committed artifact, zero API calls:
+
+| arm | configuration | verified rate | cost (113 notes, corrected pricing) |
+|---|---|---|---|
+| A | Sonnet 5 at xhigh | 96.65 | $4.01 |
+| B | Opus 4.8 at high | 97.35 | $3.16 |
+
+The paired quality delta (0.70 points, 95% BCa CI [-0.73, 2.22]) straddles
+zero, so this is **not a demonstrated quality win** for either model. The
+routing decision was made on **cost**: Opus 4.8 at high is cheaper for
+equivalent verified-rate performance, by a corrected margin of $0.84 over
+113 notes. That decision is recorded in `shared/llm.py`.
+
+### Drift detection
+
+`governance/drift.py` compares two measurement windows with a **paired**
+bootstrap (both windows score the same held-out encounters, so a two-sample
+test would discard real information), and returns a confidence interval and
+a minimum detectable effect, not a boolean. Sensitivity was measured on a
+controlled injected accuracy drop, not assumed: as little as **3 flipped
+facts out of 5,875** (0.05%) was enough to cross into a DRIFT verdict at
+2,000 bootstrap replicates. `python scripts/run_drift_check.py --reference-run
+<id> --current-run <id>` reproduces any comparison from committed artifacts,
+zero API calls.
+
+On the two real windows this project has today, the honest verdict is
+`NOT_ATTRIBUTABLE`: the delta (+0.0052 F1) is measured, but the two windows
+differ on `max_tokens`, the generation-sampling baseline is unmeasured, and
+the reference-fact decomposer itself produced a slightly different count
+across windows from byte-identical source notes. A detector that called this
+"drift" or "no drift" instead of naming those three reasons would be
+publishing a claim the data cannot support. This is what the live
+transparency report says too, verbatim, in its "Ongoing maintenance"
+category for `note_structuring`.
+
+### Governance dashboard
+
+Three read endpoints (`/governance/inventory`, `/governance/accuracy-trend`,
+`/governance/transparency-report`, all on the orchestrator, `governance/api.py`
+and `governance/transparency.py`) back a React dashboard (`dashboard/`) that
+renders model inventory, a per-agent-and-dataset accuracy trend chart, active
+drift alerts, and the full ONC HTI-1 style transparency report, all live off
+the registry, nothing hardcoded. Verified by actually loading the page: two
+real ACI-Bench windows draw one real trend line, PriMock57's single n=7
+measurement renders as an unconnected point rather than a fabricated
+continuation of a different dataset's line, and the coding agent's real P2-4
+benchmark numbers render in its transparency card.
+
+### End-to-end pipeline test
+
+`tests/test_e2e_pipeline.py` drives a transcript through the real intake
+service (real DB write), the real orchestrator (real HTTP fan-out), and the
+three real agent services, including care-gap's real rules engine, then
+reads the resulting rows back through the real `/encounters/{id}/decisions`
+endpoint and asserts all three agents logged a decision. Only the two calls
+that would otherwise spend real money and add nondeterminism (structuring's
+and two agents' underlying Claude calls) are mocked; parsing, schema
+validation, vocabulary classification, and the registry write all run for
+real.
+
+### Load test and latency
+
+```
+make load-test
+```
+
+runs `scripts/run_load_test.py`, which starts the intake service with
+structuring stubbed (`shared/config.py::fake_structuring`, so the numbers
+below measure this service's own concurrency handling, not the Anthropic
+API's response-time variance), drives it with Locust, parses Locust's own
+CSV for every number, and writes a committed artifact under
+`governance/eval_artifacts/`.
+
+| users | spawn-rate | duration | requests | failures | req/s | p50 | p95 | p99 |
+|---|---|---|---|---|---|---|---|---|
+| 20 | 5 | 1m | 851 | 0 | 14.25 | 110ms | 240ms | 370ms |
+
+This is load-path latency for the FastAPI service, real Pydantic validation,
+and a real Postgres write on every request. It is explicitly **not** an
+end-to-end number including a live Claude generation call, and should never
+be quoted as one.
+
+### Test suite
+
+**430 passed**, ruff clean, **96% line coverage** (`shared`, `services`,
+`governance`, measured against a live Postgres, matching CI's own
+`postgres:16` service). `make test` / `make cov`.
+
+## Demo
+
+A recorded video is not yet published. `docs/DEMO-SCRIPT.md` is the
+scene-by-scene script for it, mirroring the ClinAIQA launch pattern: live
+commands, real numbers, and the honest edge cases (drift's NOT_ATTRIBUTABLE
+verdict, the coding agent's verified-rate-not-accuracy framing) shown rather
+than cut.
+
 ## Where to start
 
-Read `SETUP.md` for environment setup and the first Claude Code prompt, then follow `docs/ROADMAP.md` for the full Phase 0 through Phase 5 plan. `AGENTS.md` and `CLAUDE.md` give AI coding agents the rules and commands.
+Read `SETUP.md` for environment setup and the first Claude Code prompt, then follow `docs/ROADMAP.md` for the full Phase 0 through Phase 5 plan, task by task, with evidence for every claim on this page. `AGENTS.md` and `CLAUDE.md` give AI coding agents the rules and commands.
 
 ## Status
 
-Phase 0 scaffold. See `docs/ROADMAP.md` for every phase and `docs/` for full specs.
+Phases 0 through 3 are complete (setup, ambient intake, the multi-agent Kubernetes layer, governance and drift). Phase 4 is in progress: the dashboard, the end-to-end test, and the load test above are done; documentation and the metric audit are the remaining items. See `docs/ROADMAP.md` for the exact task-by-task state and every phase's exit-gate evidence.
