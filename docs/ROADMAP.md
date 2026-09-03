@@ -816,6 +816,28 @@ information.
   entry both say so, so a future reader (or resume line) cannot lift "110ms
   p50" out of context as if it included model generation time.
 - **P4-4 Documentation and demo.** Done when the README reflects the built system, every claimed metric links to the script that produces it, and a demo video is recorded, mirroring the ClinAIQA launch pattern.
+
+  **PARTIAL 2026-09-03.** README rewritten top to bottom: every claimed
+  metric now names the exact command that reproduces it, the stale "Phase
+  0 scaffold" status line and the disallowed "per-agent decision accuracy"
+  claim (ROADMAP P2-4/P2-5 already forbid this; the README had not been
+  updated to match) are both removed, and sections were added for the
+  Kubernetes deployment, the coding routing decision, drift detection, the
+  dashboard, the P4-2 end-to-end test, and the P4-3 load test. Every new
+  number was re-verified live before being written, not copied from an
+  earlier entry: `kubectl get pods -n care-ops` re-checked (6/6 Running,
+  matching the README claim exactly), and `make cov` re-run against a live
+  Postgres (96% coverage, 430 passed, the CI-representative number, not the
+  92% a db-less local run gives).
+
+  **Not done: the video itself.** Recording, narrating, and publishing a
+  screen capture is a manual step outside what this session can produce.
+  `docs/DEMO-SCRIPT.md` is a scene-by-scene script for it instead, written
+  to mirror the ClinAIQA launch pattern: live commands, only measured
+  numbers, and the honest edge cases (the coding agent's verified-rate
+  framing, drift's NOT_ATTRIBUTABLE verdict) shown on screen rather than
+  cut for a cleaner story. The README's Demo section says plainly that the
+  video is not yet published, rather than implying it exists.
 - **P4-5 Metric audit.** Done when a single command or short script regenerates every headline number, so nothing on the resume is unbacked.
 
 **Exit gate:** the Definition of Done checklist in the PRD is fully checked, and every metric is reproducible.
