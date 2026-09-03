@@ -278,6 +278,82 @@ def test_get_decisions_for_an_unknown_encounter_is_an_empty_list_not_404(
     assert resp.json() == []
 
 
+# ---------- P3-5: the governance read API ----------
+#
+# inventory_rows, accuracy_trend, and build_report are monkeypatched here;
+# their real queries are proven against a real database in
+# tests/test_governance_api.py (the first two) and tests/test_transparency.py
+# (the third). This is the HTTP surface only: status code, response shape,
+# and that a query parameter actually reaches the underlying call.
+
+def test_get_inventory_returns_the_registry_rows(client, monkeypatch):
+    stub_rows = [{
+        "id": 1, "agent_name": "coding", "model": "claude-opus-4-8",
+        "version": "v1", "intended_use": "suggest codes for human review",
+        "training_data_note": None, "known_limitations": None,
+        "updated_at": "2026-09-02T00:00:00Z",
+        "cautioned_out_of_scope_use": None, "fairness_process_note": None,
+        "external_validation_note": None, "maintenance_schedule": None,
+    }]
+    monkeypatch.setattr("services.orchestrator.app.inventory_rows",
+                        lambda: stub_rows)
+
+    resp = client.get("/governance/inventory")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["agent_name"] == "coding"
+    assert body[0]["model"] == "claude-opus-4-8"
+
+
+def test_get_accuracy_trend_passes_the_agent_name_filter_through(
+        client, monkeypatch):
+    captured = {}
+
+    def fake_trend(agent_name=None):
+        captured["agent_name"] = agent_name
+        return []
+
+    monkeypatch.setattr("services.orchestrator.app.accuracy_trend", fake_trend)
+
+    resp = client.get("/governance/accuracy-trend",
+                      params={"agent_name": "coding"})
+
+    assert resp.status_code == 200
+    assert captured["agent_name"] == "coding"
+
+
+def test_get_accuracy_trend_with_no_query_param_passes_none(
+        client, monkeypatch):
+    """None means "every agent", not "no agent": governance/api.py branches
+    on this exact value to decide whether to add a WHERE clause."""
+    captured = {}
+
+    def fake_trend(agent_name=None):
+        captured["agent_name"] = agent_name
+        return []
+
+    monkeypatch.setattr("services.orchestrator.app.accuracy_trend", fake_trend)
+
+    resp = client.get("/governance/accuracy-trend")
+
+    assert resp.status_code == 200
+    assert captured["agent_name"] is None
+
+
+def test_get_transparency_report_returns_build_reports_rows(
+        client, monkeypatch):
+    stub_report = [{"agent_name": "coding", "model": "claude-opus-4-8"}]
+    monkeypatch.setattr("services.orchestrator.app.build_report",
+                        lambda: stub_report)
+
+    resp = client.get("/governance/transparency-report")
+
+    assert resp.status_code == 200
+    assert resp.json() == stub_report
+
+
 def test_two_agents_failing_at_once_still_leaves_the_third(client, monkeypatch):
     """Without a reducer on the `errors` channel this raises
     InvalidUpdateError inside LangGraph and aborts the whole graph, including
