@@ -16,8 +16,17 @@ Two different things use Claude models in this project. Keep them separate.
 
 Guiding principle for this build:
 - **Sonnet 5** is the default for mechanical work: scaffolding, endpoints, wiring, containerization, UI, docs.
-- **Opus 4.8 at xhigh** for reasoning-heavy work: orchestration, clinical-content correctness, drift logic, infrastructure.
-- **Opus 4.8 at max** for correctness-critical metric work only: anything that computes or protects a headline number, because a subtle bug there silently invalidates the project. This is the same rule used on ClinAIQA for the leak-free split and the precision and recall computation.
+- **Opus 5 at xhigh** for reasoning-heavy work: orchestration, clinical-content correctness, drift logic, infrastructure.
+- **Opus 5 at max** for correctness-critical metric work only: anything that computes or protects a headline number, because a subtle bug there silently invalidates the project. This is the same rule used on ClinAIQA for the leak-free split and the precision and recall computation.
+
+**Layer A said Opus 4.8 until 2026-09-04.** Opus 5 supersedes it, so every
+session recommendation in the table below now names Opus 5. **Layer B still
+says `claude-opus-4-8`, and that is correct, not an oversight**: it records
+which model the coding agent actually routes to, decided by the P2-4
+benchmark on 2026-08-07 and pinned in `shared/llm.py`. Changing that string
+here would misreport what the benchmark measured and what the code runs.
+Routing moves only when a new benchmark moves it, never because a newer
+model exists.
 
 ---
 
@@ -35,7 +44,7 @@ This convention is referenced in CLAUDE.md and AGENTS.md so it is loaded every s
 
 ## Layer A: session model and effort by phase and task
 
-Legend: S5 = Sonnet 5, O48 = Opus 4.8.
+Legend: S5 = Sonnet 5, O5 = Opus 5.
 
 ### Phase 0: Setup
 | Task | Model | Effort | Why |
@@ -44,7 +53,7 @@ Legend: S5 = Sonnet 5, O48 = Opus 4.8.
 | P0-2 Postgres schema | S5 | medium | Straightforward DDL |
 | P0-3 Local Kubernetes | S5 | high | Manifest correctness matters |
 | P0-4 Dataset acquisition | S5 | low | Download and document |
-| P0-5 Held-out split definition | O48 | max | Correctness-critical. A leak invalidates every later metric |
+| P0-5 Held-out split definition | O5 | max | Correctness-critical. A leak invalidates every later metric |
 
 ### Phase 1: Ambient Intake
 | Task | Model | Effort | Why |
@@ -52,7 +61,7 @@ Legend: S5 = Sonnet 5, O48 = Opus 4.8.
 | P1-1 Whisper transcription | S5 | medium | Integration wiring |
 | P1-2 SOAP structuring | S5 | high | Prompt and schema design matter |
 | P1-3 Intake service and persistence | S5 | medium | CRUD and endpoint |
-| P1-4 Accuracy harness | O48 | max | Computes the headline structuring metric |
+| P1-4 Accuracy harness | O5 | max | Computes the headline structuring metric |
 | P1-5 Intake tests | S5 | high | Coverage of edge cases |
 | P1-6 CI green | S5 | medium | Pipeline config |
 
@@ -60,19 +69,19 @@ Legend: S5 = Sonnet 5, O48 = Opus 4.8.
 | Task | Model | Effort | Why |
 |---|---|---|---|
 | P2-1 Prior-Auth Agent | S5 | high | Agent logic and prompt |
-| P2-2 Care Gap real rule set | O48 | xhigh | Needs citable guidelines, high hallucination risk to verify |
-| P2-3 Coding and Eligibility Agent | O48 | xhigh | Hardest clinical domain |
-| P2-4 Coding model benchmark | O48 | max | An eval that decides routing, must be sound |
+| P2-2 Care Gap real rule set | O5 | xhigh | Needs citable guidelines, high hallucination risk to verify |
+| P2-3 Coding and Eligibility Agent | O5 | xhigh | Hardest clinical domain |
+| P2-4 Coding model benchmark | O5 | max | An eval that decides routing, must be sound |
 | P2-5 Containerize and deploy | S5 | medium | Dockerfiles and manifests |
-| P2-6 LangGraph orchestration | O48 | xhigh | Multi-service control and failure isolation |
+| P2-6 LangGraph orchestration | O5 | xhigh | Multi-service control and failure isolation |
 | P2-7 Registry logging | S5 | high | Audit correctness matters |
 
 ### Phase 3: Governance and Drift
 | Task | Model | Effort | Why |
 |---|---|---|---|
-| P3-1 Evaluation runner | O48 | max | Metric computation |
-| P3-2 Two windows of data | O48 | max | Produces the second headline number, and the harness will fabricate it if unguarded. See below |
-| P3-3 Drift detection | O48 | xhigh | Sensitivity logic and Evidently API correctness |
+| P3-1 Evaluation runner | O5 | max | Metric computation |
+| P3-2 Two windows of data | O5 | max | Produces the second headline number, and the harness will fabricate it if unguarded. See below |
+| P3-3 Drift detection | O5 | xhigh | Sensitivity logic and Evidently API correctness |
 | P3-4 Transparency report generator | S5 | high | Verify HTI-1 field mapping by hand |
 | P3-5 Governance API | S5 | medium | Read endpoints |
 
@@ -83,16 +92,16 @@ Legend: S5 = Sonnet 5, O48 = Opus 4.8.
 | P4-2 End-to-end integration test | S5 | high | Full pipeline assertion |
 | P4-3 Load test and latency capture | S5 | medium | Run and interpret carefully |
 | P4-4 Documentation and demo | S5 | medium | Writing |
-| P4-5 Metric audit | O48 | max | Regenerates every headline number |
+| P4-5 Metric audit | O5 | max | Regenerates every headline number |
 
 ### Phase 5: Stretch
 | Task | Model | Effort | Why |
 |---|---|---|---|
-| P5-1 LoRA fine-tune and comparison | O48 | xhigh | Training loop and honest baseline comparison |
-| P5-2 AWS EKS deploy and CI/CD | O48 | xhigh | Infrastructure reasoning |
-| P5-3 Embedding Care Gap Agent | O48 | xhigh | Retrieval design and comparison |
+| P5-1 LoRA fine-tune and comparison | O5 | xhigh | Training loop and honest baseline comparison |
+| P5-2 AWS EKS deploy and CI/CD | O5 | xhigh | Infrastructure reasoning |
+| P5-3 Embedding Care Gap Agent | O5 | xhigh | Retrieval design and comparison |
 
-Quick rule if you forget: if the task writes or protects a number that could end up on your resume, use `/model opus` and `/effort max`. Otherwise Sonnet 5 at medium or high is right, and Opus 4.8 xhigh is for the genuinely hard design and orchestration work.
+Quick rule if you forget: if the task writes or protects a number that could end up on your resume, use `/model opus` and `/effort max`. Otherwise Sonnet 5 at medium or high is right, and Opus 5 at xhigh is for the genuinely hard design and orchestration work.
 
 **P3-2 was rated S5/medium, "data plumbing", until 2026-08-31.** That was
 written before P3-1 defined what a window is, and it was wrong twice over.

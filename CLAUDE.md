@@ -12,6 +12,9 @@ Session notes for Claude Code.
 - Run tests: `make test`
 - Coverage: `make cov`
 - Lint: `make lint`
+- Audit every published metric: `make audit` (`make audit-full` also re-runs
+  the suite; needs a live Postgres). Runs in CI, so a stale number in the
+  README fails the build.
 - Full local stack: `make up`
 - Load test: `make load-test`
 - Local cluster: `make cluster-up`
