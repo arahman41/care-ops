@@ -345,4 +345,10 @@ Read `SETUP.md` for environment setup and the first Claude Code prompt, then fol
 
 ## Status
 
-Phases 0 through 3 are complete (setup, ambient intake, the multi-agent Kubernetes layer, governance and drift). Phase 4 is in progress: the dashboard, the end-to-end test, and the load test above are done; documentation and the metric audit are the remaining items. See `docs/ROADMAP.md` for the exact task-by-task state and every phase's exit-gate evidence.
+Phases 0 through 4 are complete as engineering work: setup, ambient intake, the multi-agent Kubernetes layer, governance and drift, and the dashboard, end-to-end test, load test, documentation and metric audit above.
+
+Nine of the ten Definition of Done items in the PRD are ticked. The tenth, the demo video, is not recorded, so the Phase 4 exit gate stays formally open on it rather than being reworded into something already true. `docs/DEMO-SCRIPT.md` is the script for it.
+
+Phase 5 is optional stretch and has not been started: a LoRA fine-tune compared against the prompted baseline, a cloud EKS deploy, and an embedding-based care-gap agent. The MVP was deliberately never blocked on any of them.
+
+See `docs/ROADMAP.md` for the exact task-by-task state and every phase's exit-gate evidence.
